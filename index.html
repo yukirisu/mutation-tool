@@ -7,32 +7,47 @@
 <body>
   <h1>FASTA Mutation Generator (Pyodide)</h1>
 
+  <!-- 単一置換モード -->
+  <h2>① 単一置換モード</h2>
   <label>FASTAファイルを選択:</label>
-  <input type="file" id="fastaFile" accept=".fasta,.fa" /><br><br>
+  <input type="file" id="fastaFile1" accept=".fasta,.fa" /><br><br>
 
   <label>置換する位置（カンマ区切りで入力）:</label><br>
-  <input type="text" id="positions" placeholder="例: 1,5,10"><br><br>
+  <input type="text" id="positions1" placeholder="例: 1,5,10"><br><br>
 
-  <button id="runBtn">変異を生成する</button>
+  <button id="runBtn1">変異を生成する（単一位置ごとに19配列）</button>
+  <p id="status1"></p>
+  <a id="downloadLink1" style="display:none;">結果をダウンロード</a>
 
-  <p id="status"></p>
+  <hr>
 
-  <a id="downloadLink" style="display:none;">結果をダウンロード</a>
+  <!-- 全組み合わせモード -->
+  <h2>② 全組み合わせモード</h2>
+  <label>FASTAファイルを選択:</label>
+  <input type="file" id="fastaFile2" accept=".fasta,.fa" /><br><br>
 
-  <!-- Pyodideの読み込み -->
+  <label>置換する位置（カンマ区切りで入力）:</label><br>
+  <input type="text" id="positions2" placeholder="例: 1,5"><br><br>
+
+  <button id="runBtn2">変異を生成する（全組み合わせ）</button>
+  <p id="status2"></p>
+  <a id="downloadLink2" style="display:none;">結果をダウンロード</a>
+
+  <!-- Pyodide -->
   <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
   <script>
     async function main() {
       const pyodide = await loadPyodide();
       await pyodide.loadPackage("biopython");
 
-      const code = `
+      // 単一置換モード用Python関数
+      const code1 = `
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 import io
 
-def replace_amino_acids_by_position(input_content, positions):
+def replace_amino_acids_single(input_content, positions):
     amino_acids = "ACDEFGHIKLMNPQRSTVWY"
     input_handle = io.StringIO(input_content)
     records = SeqIO.parse(input_handle, "fasta")
@@ -60,45 +75,106 @@ def replace_amino_acids_by_position(input_content, positions):
         SeqIO.write(mutated_records, output, "fasta")
     return output.getvalue()
 `;
-      pyodide.runPython(code);
+      pyodide.runPython(code1);
 
-      // 実行ボタンの処理
-      document.getElementById("runBtn").onclick = async () => {
-        const fileInput = document.getElementById("fastaFile");
-        const posInput = document.getElementById("positions").value;
+      // 全組み合わせモード用Python関数
+      const code2 = `
+from itertools import product
 
+def replace_amino_acids_combination(input_content, positions):
+    amino_acids = "ACDEFGHIKLMNPQRSTVWY"
+    input_handle = io.StringIO(input_content)
+    records = SeqIO.parse(input_handle, "fasta")
+    output = io.StringIO()
+
+    for record in records:
+        original_sequence = str(record.seq)
+        mutated_records = []
+        # 全組み合わせを生成
+        for replacements in product(amino_acids, repeat=len(positions)):
+            mutated_sequence = list(original_sequence)
+            new_id_parts = []
+            valid = True
+            for pos, rep in zip(positions, replacements):
+                if pos < 1 or pos > len(original_sequence):
+                    valid = False
+                    break
+                target_aa = original_sequence[pos - 1]
+                if rep == target_aa:
+                    valid = False
+                    break
+                mutated_sequence[pos - 1] = rep
+                new_id_parts.append(f"{target_aa}{pos}{rep}")
+            if not valid:
+                continue
+            mutated_sequence = "".join(mutated_sequence)
+            mutated_record = SeqRecord(
+                Seq(mutated_sequence),
+                id=f"{record.id}-{'_'.join(new_id_parts)}",
+                description=""
+            )
+            mutated_records.append(mutated_record)
+        SeqIO.write(mutated_records, output, "fasta")
+    return output.getvalue()
+`;
+      pyodide.runPython(code2);
+
+      // 単一置換モード実行
+      document.getElementById("runBtn1").onclick = async () => {
+        const fileInput = document.getElementById("fastaFile1");
+        const posInput = document.getElementById("positions1").value;
         if (!fileInput.files.length) {
           alert("FASTAファイルを選択してください");
           return;
         }
         if (!posInput.trim()) {
-          alert("置換する位置を入力してください（例: 1,5,10）");
+          alert("置換する位置を入力してください");
           return;
         }
-
-        document.getElementById("status").innerText = "処理中...";
-
+        document.getElementById("status1").innerText = "処理中...";
         const file = fileInput.files[0];
         const text = await file.text();
-
-        // 入力文字列 → 整数リストに変換
         const positions = posInput.split(",").map(x => parseInt(x.trim())).filter(x => !isNaN(x));
-
-        // Pythonコード実行
         const result = pyodide.runPython(`
-replace_amino_acids_by_position("""${text}""", ${JSON.stringify(positions)})
+replace_amino_acids_single("""${text}""", ${JSON.stringify(positions)})
 `);
-
-        // ダウンロードリンク生成
         const blob = new Blob([result], { type: "text/plain" });
         const url = URL.createObjectURL(blob);
-        const dl = document.getElementById("downloadLink");
+        const dl = document.getElementById("downloadLink1");
         dl.href = url;
-        dl.download = "mutations.fasta";
+        dl.download = "mutations_single.fasta";
         dl.style.display = "block";
         dl.innerText = "結果をダウンロード";
+        document.getElementById("status1").innerText = "完了!";
+      };
 
-        document.getElementById("status").innerText = "完了!";
+      // 全組み合わせモード実行
+      document.getElementById("runBtn2").onclick = async () => {
+        const fileInput = document.getElementById("fastaFile2");
+        const posInput = document.getElementById("positions2").value;
+        if (!fileInput.files.length) {
+          alert("FASTAファイルを選択してください");
+          return;
+        }
+        if (!posInput.trim()) {
+          alert("置換する位置を入力してください");
+          return;
+        }
+        document.getElementById("status2").innerText = "処理中...";
+        const file = fileInput.files[0];
+        const text = await file.text();
+        const positions = posInput.split(",").map(x => parseInt(x.trim())).filter(x => !isNaN(x));
+        const result = pyodide.runPython(`
+replace_amino_acids_combination("""${text}""", ${JSON.stringify(positions)})
+`);
+        const blob = new Blob([result], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const dl = document.getElementById("downloadLink2");
+        dl.href = url;
+        dl.download = "mutations_combination.fasta";
+        dl.style.display = "block";
+        dl.innerText = "結果をダウンロード";
+        document.getElementById("status2").innerText = "完了!";
       };
     }
     main();
