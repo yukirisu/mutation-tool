@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>FASTA Mutation Generator</title>
+</head>
+<body>
+  <h1>FASTA Mutation Generator (Pyodide)</h1>
+
+  <input type="file" id="fastaFile" accept=".fasta,.fa" />
+  <br><br>
+  <button id="runBtn">変異を生成する</button>
+
+  <p id="status"></p>
+
+  <a id="downloadLink" style="display:none;">結果をダウンロード</a>
+
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+  <script>
+    async function main() {
+      const pyodide = await loadPyodide();
+      await pyodide.loadPackage("biopython");
+
+      const code = `
+from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+import io
+
+def replace_amino_acids_by_position(input_content, positions):
+    amino_acids = "ACDEFGHIKLMNPQRSTVWY"
+    input_handle = io.StringIO(input_content)
+    records = SeqIO.parse(input_handle, "fasta")
+    output = io.StringIO()
+
+    for record in records:
+        original_sequence = str(record.seq)
+        mutated_records = []
+        for position in positions:
+            if position < 1 or position > len(original_sequence):
+                continue
+            target_aa = original_sequence[position - 1]
+            for replacement in amino_acids:
+                if replacement == target_aa:
+                    continue
+                mutated_sequence = list(original_sequence)
+                mutated_sequence[position - 1] = replacement
+                mutated_sequence = "".join(mutated_sequence)
+                mutated_record = SeqRecord(
+                    Seq(mutated_sequence),
+                    id=f"{record.id}-{target_aa}{position}{replacement}",
+                    description=""
+                )
+                mutated_records.append(mutated_record)
+        SeqIO.write(mutated_records, output, "fasta")
+    return output.getvalue()
+`;
+
+      // 実行ボタンの処理
+      document.getElementById("runBtn").onclick = async () => {
+        const fileInput = document.getElementById("fastaFile");
+        if (!fileInput.files.length) {
+          alert("FASTAファイルを選択してください");
+          return;
+        }
+
+        document.getElementById("status").innerText = "処理中...";
+
+        const file = fileInput.files[0];
+        const text = await file.text();
+
+        // Pythonコードを実行
+        pyodide.runPython(code);
+        const result = pyodide.runPython(`
+replace_amino_acids_by_position("""${text}""", list(range(1,11)))
+`);
+
+        // ダウンロードリンク生成
+        const blob = new Blob([result], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const dl = document.getElementById("downloadLink");
+        dl.href = url;
+        dl.download = "mutations.fasta";
+        dl.style.display = "block";
+        dl.innerText = "結果をダウンロード";
+
+        document.getElementById("status").innerText = "完了!";
+      };
+    }
+    main();
+  </script>
+</body>
+</html>
