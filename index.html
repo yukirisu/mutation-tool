@@ -7,14 +7,19 @@
 <body>
   <h1>FASTA Mutation Generator (Pyodide)</h1>
 
-  <input type="file" id="fastaFile" accept=".fasta,.fa" />
-  <br><br>
+  <label>FASTAファイルを選択:</label>
+  <input type="file" id="fastaFile" accept=".fasta,.fa" /><br><br>
+
+  <label>置換する位置（カンマ区切りで入力）:</label><br>
+  <input type="text" id="positions" placeholder="例: 1,5,10"><br><br>
+
   <button id="runBtn">変異を生成する</button>
 
   <p id="status"></p>
 
   <a id="downloadLink" style="display:none;">結果をダウンロード</a>
 
+  <!-- Pyodideの読み込み -->
   <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
   <script>
     async function main() {
@@ -55,12 +60,19 @@ def replace_amino_acids_by_position(input_content, positions):
         SeqIO.write(mutated_records, output, "fasta")
     return output.getvalue()
 `;
+      pyodide.runPython(code);
 
       // 実行ボタンの処理
       document.getElementById("runBtn").onclick = async () => {
         const fileInput = document.getElementById("fastaFile");
+        const posInput = document.getElementById("positions").value;
+
         if (!fileInput.files.length) {
           alert("FASTAファイルを選択してください");
+          return;
+        }
+        if (!posInput.trim()) {
+          alert("置換する位置を入力してください（例: 1,5,10）");
           return;
         }
 
@@ -69,10 +81,12 @@ def replace_amino_acids_by_position(input_content, positions):
         const file = fileInput.files[0];
         const text = await file.text();
 
-        // Pythonコードを実行
-        pyodide.runPython(code);
+        // 入力文字列 → 整数リストに変換
+        const positions = posInput.split(",").map(x => parseInt(x.trim())).filter(x => !isNaN(x));
+
+        // Pythonコード実行
         const result = pyodide.runPython(`
-replace_amino_acids_by_position("""${text}""", list(range(1,11)))
+replace_amino_acids_by_position("""${text}""", ${JSON.stringify(positions)})
 `);
 
         // ダウンロードリンク生成
