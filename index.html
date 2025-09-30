@@ -3,18 +3,38 @@
 <head>
   <meta charset="UTF-8">
   <title>FASTA Mutation Generator</title>
+  <style>
+    .drop-zone {
+      width: 300px;
+      padding: 20px;
+      border: 2px dashed #666;
+      border-radius: 10px;
+      text-align: center;
+      color: #666;
+      margin-bottom: 10px;
+      cursor: pointer;
+    }
+    .drop-zone.dragover {
+      background-color: #eef;
+      border-color: #00f;
+      color: #00f;
+    }
+  </style>
 </head>
 <body>
   <h1>FASTA Mutation Generator (Pyodide)</h1>
 
+  <!-- 共通のFASTA入力 -->
+  <h2>FASTAファイルを選択またはドロップ</h2>
+  <div id="dropZone" class="drop-zone">ここにFASTAファイルをドロップ<br>またはクリックして選択</div>
+  <input type="file" id="fastaFile" accept=".fasta,.fa" style="display:none;" />
+
+  <hr>
+
   <!-- 単一置換モード -->
   <h2>① 単一置換モード</h2>
-  <label>FASTAファイルを選択:</label>
-  <input type="file" id="fastaFile1" accept=".fasta,.fa" /><br><br>
-
-  <label>置換する位置（カンマ区切りで入力）:</label><br>
+  <label>置換する位置（カンマ区切り、最大3つまで）:</label><br>
   <input type="text" id="positions1" placeholder="例: 1,5,10"><br><br>
-
   <button id="runBtn1">変異を生成する（単一位置ごとに19配列）</button>
   <p id="status1"></p>
   <a id="downloadLink1" style="display:none;">結果をダウンロード</a>
@@ -23,12 +43,8 @@
 
   <!-- 全組み合わせモード -->
   <h2>② 全組み合わせモード</h2>
-  <label>FASTAファイルを選択:</label>
-  <input type="file" id="fastaFile2" accept=".fasta,.fa" /><br><br>
-
-  <label>置換する位置（カンマ区切りで入力）:</label><br>
-  <input type="text" id="positions2" placeholder="例: 1,5"><br><br>
-
+  <label>置換する位置（カンマ区切り、最大3つまで）:</label><br>
+  <input type="text" id="positions2" placeholder="例: 1,5,10"><br><br>
   <button id="runBtn2">変異を生成する（全組み合わせ）</button>
   <p id="status2"></p>
   <a id="downloadLink2" style="display:none;">結果をダウンロード</a>
@@ -36,26 +52,53 @@
   <!-- Pyodide -->
   <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
   <script>
+    // --- ドラッグ&ドロップ処理 ---
+    function setupDropZone(dropZoneId, fileInputId) {
+      const dropZone = document.getElementById(dropZoneId);
+      const fileInput = document.getElementById(fileInputId);
+
+      dropZone.addEventListener("click", () => fileInput.click());
+      dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("dragover");
+      });
+      dropZone.addEventListener("dragleave", () => {
+        dropZone.classList.remove("dragover");
+      });
+      dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) {
+          fileInput.files = e.dataTransfer.files;
+          dropZone.textContent = e.dataTransfer.files[0].name;
+        }
+      });
+      fileInput.addEventListener("change", () => {
+        if (fileInput.files.length) {
+          dropZone.textContent = fileInput.files[0].name;
+        }
+      });
+    }
+
     async function main() {
       const pyodide = await loadPyodide();
       await pyodide.loadPackage("biopython");
 
-      // 単一置換モード用Python関数
-      const code1 = `
+      const code = `
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 import io
+from itertools import product
+
+amino_acids = "ACDEFGHIKLMNPQRSTVWY"
 
 def replace_amino_acids_single(input_content, positions):
-    amino_acids = "ACDEFGHIKLMNPQRSTVWY"
     input_handle = io.StringIO(input_content)
     records = SeqIO.parse(input_handle, "fasta")
     output = io.StringIO()
-
     for record in records:
         original_sequence = str(record.seq)
-        mutated_records = []
         for position in positions:
             if position < 1 or position > len(original_sequence):
                 continue
@@ -65,32 +108,20 @@ def replace_amino_acids_single(input_content, positions):
                     continue
                 mutated_sequence = list(original_sequence)
                 mutated_sequence[position - 1] = replacement
-                mutated_sequence = "".join(mutated_sequence)
                 mutated_record = SeqRecord(
-                    Seq(mutated_sequence),
+                    Seq("".join(mutated_sequence)),
                     id=f"{record.id}-{target_aa}{position}{replacement}",
                     description=""
                 )
-                mutated_records.append(mutated_record)
-        SeqIO.write(mutated_records, output, "fasta")
+                SeqIO.write(mutated_record, output, "fasta")
     return output.getvalue()
-`;
-      pyodide.runPython(code1);
-
-      // 全組み合わせモード用Python関数
-      const code2 = `
-from itertools import product
 
 def replace_amino_acids_combination(input_content, positions):
-    amino_acids = "ACDEFGHIKLMNPQRSTVWY"
     input_handle = io.StringIO(input_content)
     records = SeqIO.parse(input_handle, "fasta")
     output = io.StringIO()
-
     for record in records:
         original_sequence = str(record.seq)
-        mutated_records = []
-        # 全組み合わせを生成
         for replacements in product(amino_acids, repeat=len(positions)):
             mutated_sequence = list(original_sequence)
             new_id_parts = []
@@ -107,75 +138,53 @@ def replace_amino_acids_combination(input_content, positions):
                 new_id_parts.append(f"{target_aa}{pos}{rep}")
             if not valid:
                 continue
-            mutated_sequence = "".join(mutated_sequence)
             mutated_record = SeqRecord(
-                Seq(mutated_sequence),
+                Seq("".join(mutated_sequence)),
                 id=f"{record.id}-{'_'.join(new_id_parts)}",
                 description=""
             )
-            mutated_records.append(mutated_record)
-        SeqIO.write(mutated_records, output, "fasta")
+            SeqIO.write(mutated_record, output, "fasta")
     return output.getvalue()
 `;
-      pyodide.runPython(code2);
+      pyodide.runPython(code);
 
-      // 単一置換モード実行
-      document.getElementById("runBtn1").onclick = async () => {
-        const fileInput = document.getElementById("fastaFile1");
-        const posInput = document.getElementById("positions1").value;
+      // --- 共通処理 ---
+      async function runMutation(funcName, posInputId, statusId, dlId, fileInputId, fileName) {
+        const fileInput = document.getElementById(fileInputId);
+        const posInput = document.getElementById(posInputId).value;
         if (!fileInput.files.length) {
-          alert("FASTAファイルを選択してください");
+          alert("FASTAファイルを選択またはドロップしてください");
           return;
         }
-        if (!posInput.trim()) {
-          alert("置換する位置を入力してください");
+        const positions = posInput.split(",").map(x => parseInt(x.trim())).filter(x => !isNaN(x));
+        if (positions.length === 0 || positions.length > 3) {
+          alert("置換する位置は1〜3個まで入力してください");
           return;
         }
-        document.getElementById("status1").innerText = "処理中...";
+        document.getElementById(statusId).innerText = "処理中...";
         const file = fileInput.files[0];
         const text = await file.text();
-        const positions = posInput.split(",").map(x => parseInt(x.trim())).filter(x => !isNaN(x));
-        const result = pyodide.runPython(`
-replace_amino_acids_single("""${text}""", ${JSON.stringify(positions)})
-`);
+        const result = pyodide.runPython(\`
+\${funcName}("""\${text}""", \${JSON.stringify(positions)})
+\`);
         const blob = new Blob([result], { type: "text/plain" });
         const url = URL.createObjectURL(blob);
-        const dl = document.getElementById("downloadLink1");
+        const dl = document.getElementById(dlId);
         dl.href = url;
-        dl.download = "mutations_single.fasta";
+        dl.download = fileName;
         dl.style.display = "block";
         dl.innerText = "結果をダウンロード";
-        document.getElementById("status1").innerText = "完了!";
-      };
+        document.getElementById(statusId).innerText = "完了!";
+      }
 
-      // 全組み合わせモード実行
-      document.getElementById("runBtn2").onclick = async () => {
-        const fileInput = document.getElementById("fastaFile2");
-        const posInput = document.getElementById("positions2").value;
-        if (!fileInput.files.length) {
-          alert("FASTAファイルを選択してください");
-          return;
-        }
-        if (!posInput.trim()) {
-          alert("置換する位置を入力してください");
-          return;
-        }
-        document.getElementById("status2").innerText = "処理中...";
-        const file = fileInput.files[0];
-        const text = await file.text();
-        const positions = posInput.split(",").map(x => parseInt(x.trim())).filter(x => !isNaN(x));
-        const result = pyodide.runPython(`
-replace_amino_acids_combination("""${text}""", ${JSON.stringify(positions)})
-`);
-        const blob = new Blob([result], { type: "text/plain" });
-        const url = URL.createObjectURL(blob);
-        const dl = document.getElementById("downloadLink2");
-        dl.href = url;
-        dl.download = "mutations_combination.fasta";
-        dl.style.display = "block";
-        dl.innerText = "結果をダウンロード";
-        document.getElementById("status2").innerText = "完了!";
-      };
+      // ボタンに処理を登録
+      document.getElementById("runBtn1").onclick = () =>
+        runMutation("replace_amino_acids_single", "positions1", "status1", "downloadLink1", "fastaFile", "mutations_single.fasta");
+      document.getElementById("runBtn2").onclick = () =>
+        runMutation("replace_amino_acids_combination", "positions2", "status2", "downloadLink2", "fastaFile", "mutations_combination.fasta");
+
+      // ドロップゾーン有効化
+      setupDropZone("dropZone", "fastaFile");
     }
     main();
   </script>
