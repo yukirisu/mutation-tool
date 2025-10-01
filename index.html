@@ -5,7 +5,7 @@
   <title>FASTA Mutation Generator</title>
   <style>
     .drop-zone {
-      width: 500px;
+      width: 300px;
       padding: 20px;
       border: 2px dashed #666;
       border-radius: 10px;
@@ -19,15 +19,33 @@
       border-color: #00f;
       color: #00f;
     }
+    hr {
+      width: 66%; /* ページ幅の2/3 */
+      margin: 20px auto;
+    }
+    .file-button {
+      display: inline-block;
+      padding: 8px 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-bottom: 20px;
+    }
   </style>
 </head>
 <body>
   <h1>FASTA Mutation Generator (Pyodide)</h1>
 
-  <!-- 共通のFASTA入力 -->
-  <h2>FASTAファイルを選択またはドロップ</h2>
-  <div id="dropZone" class="drop-zone">ここにFASTAファイルをドロップ<br>またはクリックして選択</div>
+  <!-- ドラッグ&ドロップ用 -->
+  <h2>FASTAファイルをドラッグ&ドロップ</h2>
+  <div id="dropZone" class="drop-zone">ここにFASTAファイルをドロップ</div>
+
+  <!-- クリックして選択用 -->
+  <h2>またはクリックしてFASTAファイルを選択</h2>
   <input type="file" id="fastaFile" accept=".fasta,.fa" style="display:none;" />
+  <button class="file-button" onclick="document.getElementById('fastaFile').click()">ファイルを選択</button>
 
   <hr>
 
@@ -57,7 +75,6 @@
       const dropZone = document.getElementById(dropZoneId);
       const fileInput = document.getElementById(fileInputId);
 
-      dropZone.addEventListener("click", () => fileInput.click());
       dropZone.addEventListener("dragover", (e) => {
         e.preventDefault();
         dropZone.classList.add("dragover");
@@ -71,11 +88,6 @@
         if (e.dataTransfer.files.length) {
           fileInput.files = e.dataTransfer.files;
           dropZone.textContent = e.dataTransfer.files[0].name;
-        }
-      });
-      fileInput.addEventListener("change", () => {
-        if (fileInput.files.length) {
-          dropZone.textContent = fileInput.files[0].name;
         }
       });
     }
@@ -148,7 +160,6 @@ def replace_amino_acids_combination(input_content, positions):
 `;
       pyodide.runPython(code);
 
-      // --- 共通処理 ---
       async function runMutation(funcName, posInputId, statusId, dlId, fileInputId, fileName) {
         const fileInput = document.getElementById(fileInputId);
         const posInput = document.getElementById(posInputId).value;
@@ -177,13 +188,11 @@ def replace_amino_acids_combination(input_content, positions):
         document.getElementById(statusId).innerText = "完了!";
       }
 
-      // ボタンに処理を登録
       document.getElementById("runBtn1").onclick = () =>
         runMutation("replace_amino_acids_single", "positions1", "status1", "downloadLink1", "fastaFile", "mutations_single.fasta");
       document.getElementById("runBtn2").onclick = () =>
         runMutation("replace_amino_acids_combination", "positions2", "status2", "downloadLink2", "fastaFile", "mutations_combination.fasta");
 
-      // ドロップゾーン有効化
       setupDropZone("dropZone", "fastaFile");
     }
     main();
