@@ -60,7 +60,7 @@
   <input type="text" id="positions1" placeholder="例: 1,5,10"><br><br>
   <button id="runBtn1">変異を生成する（単一位置ごとに19配列）</button>
   <p id="status1"></p>
-  <a id="downloadLink1" style="display:none;">結果をダウンロード</a>
+  <a id="downloadLink1" style="display:none;"></a>
 
   <hr>
 
@@ -70,12 +70,11 @@
   <input type="text" id="positions2" placeholder="例: 1,5,10"><br><br>
   <button id="runBtn2">変異を生成する（全組み合わせ）</button>
   <p id="status2"></p>
-  <a id="downloadLink2" style="display:none;">結果をダウンロード</a>
+  <a id="downloadLink2" style="display:none;"></a>
 
   <!-- Pyodide -->
   <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
   <script>
-    // --- ドラッグ&ドロップ処理 ---
     function setupDropZone(dropZoneId, fileInputId, displayId) {
       const dropZone = document.getElementById(dropZoneId);
       const fileInput = document.getElementById(fileInputId);
@@ -86,21 +85,22 @@
         e.preventDefault();
         dropZone.classList.add("dragover");
       });
-      dropZone.addEventListener("dragleave", () => {
+      dropZone.addEventListener("dragleave", (e) => {
+        e.preventDefault();
         dropZone.classList.remove("dragover");
       });
       dropZone.addEventListener("drop", (e) => {
         e.preventDefault();
         dropZone.classList.remove("dragover");
-        if (e.dataTransfer.files.length) {
+        if (e.dataTransfer.files.length > 0) {
           fileInput.files = e.dataTransfer.files;
           display.textContent = "現在選択されているファイル: " + e.dataTransfer.files[0].name;
         }
       });
 
-      // ファイル選択ボタンの変更も同期
+      // クリック選択でのファイル名表示
       fileInput.addEventListener("change", () => {
-        if (fileInput.files.length) {
+        if (fileInput.files.length > 0) {
           display.textContent = "現在選択されているファイル: " + fileInput.files[0].name;
         }
       });
@@ -197,7 +197,7 @@ def replace_amino_acids_combination(input_content, positions):
         const dl = document.getElementById(dlId);
         dl.href = url;
         dl.download = fileName;
-        dl.style.display = "block";
+        dl.style.display = "inline";
         dl.innerText = "結果をダウンロード";
         document.getElementById(statusId).innerText = "完了!";
       }
