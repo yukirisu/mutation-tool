@@ -22,7 +22,7 @@
   </style>
 </head>
 <body>
-  <h1>FASTA Mutation Generator (Pyodide)</h1>
+  <h1>FASTA Mutation Generator (Pyodide Local)</h1>
 
   <!-- 共通のFASTA入力 -->
   <h2>FASTAファイルを選択またはドロップ</h2>
@@ -49,8 +49,8 @@
   <p id="status2"></p>
   <a id="downloadLink2" style="display:none;">結果をダウンロード</a>
 
-  <!-- Pyodide -->
-  <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+  <!-- Pyodide（ローカル版を使用） -->
+  <script src="pyodide/pyodide.js"></script>
   <script>
     // --- ドラッグ&ドロップ処理 ---
     function setupDropZone(dropZoneId, fileInputId) {
@@ -81,7 +81,7 @@
     }
 
     async function main() {
-      const pyodide = await loadPyodide();
+      const pyodide = await loadPyodide({ indexURL: "pyodide/" });
       await pyodide.loadPackage("biopython");
 
       const code = `
