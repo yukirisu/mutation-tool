@@ -1,308 +1,215 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-# =========================
-# USER SETTINGS（ここだけ編集）
-# =========================
-RUN            = True            # True のままでOK（実行トリガー）
-MODE           = "mutate"        # "check" または "mutate"
-
-INPUT_FASTA    = "BbAAS.fasta"          # 入力FASTA
-OUTPUT_FASTA   = "out/BbAAS-T.fasta"    # 出力FASTA（mutate時に使用。親フォルダ自動作成）
-
-# 変異指定（例）
-#  - 全レコード共通: "25=G,100=A"
-#  - レコード別:     "seq1:25=G,40=A;seq2:10=W"
-#  - 参照AAチェック: "25A=G"（25番がAであることを要求）
-#  - 注意: "179-N" は不可 → "179=N" にする
-MUTATIONS      = "seq1:101=V,40=A;seq2:104=F;seq3:179=N"
-
-ALLOW_ANY_AA   = False           # 20AA+X 以外も許可
-WRAP_WIDTH     = 60              # 出力FASTA折返し幅
-VERBOSE        = True            # 詳細表示
-PREVIEW_LINES  = 12              # 出力FASTAの末尾プレビュー行数
-# =========================
-# ここより下は編集不要
-# =========================
-
-from typing import Dict, List, Tuple, Optional
-from pathlib import Path
-from datetime import datetime
-import re
-import sys
-
-STD_AA = set(list("ARNDCQEGHILKMFPSTWYV"))
-
-# ---------- Core I/O ----------
-def read_fasta(path: str) -> List[Tuple[str, str, str]]:
-    """FASTAを読み込む。返り値は (header_line, record_id, seq)。"""
-    records = []
-    header = None
-    seq_lines: List[str] = []
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.rstrip("\n")
-            if line.startswith(">"):
-                if header is not None:
-                    seq = "".join(seq_lines)
-                    rid = header[1:].split()[0]
-                    records.append((header, rid, seq))
-                header = line
-                seq_lines = []
-            else:
-                if line.strip():
-                    seq_lines.append(line.strip())
-        if header is not None:
-            seq = "".join(seq_lines)
-            rid = header[1:].split()[0]
-            records.append((header, rid, seq))
-    return records
-
-def show_non_header_lines(path: str) -> List[Tuple[int, str]]:
-    """'>' で始まらない行を行番号付きで返す（空行は除外）。"""
-    hits: List[Tuple[int, str]] = []
-    with open(path, "r", encoding="utf-8") as f:
-        for lineno, line in enumerate(f, start=1):
-            if not line.startswith(">") and line.strip():
-                hits.append((lineno, line.rstrip("\n")))
-    return hits
-
-def ensure_output_file(path: str) -> Path:
-    """出力ファイルの親ディレクトリを作成し、無ければtouch。"""
-    p = Path(path)
-    if p.parent and not p.parent.exists():
-        p.parent.mkdir(parents=True, exist_ok=True)
-    if not p.exists():
-        p.touch()
-    return p
-
-def write_fasta(records: List[Tuple[str, str, str]], out_path: str, wrap: int = 60) -> None:
-    p = ensure_output_file(out_path)
-    lines: List[str] = []
-    for header, rid, seq in records:
-        lines.append(header)
-        for i in range(0, len(seq), wrap):
-            lines.append(seq[i:i+wrap])
-    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"[WRITE] Wrote {len(records)} records to {p.resolve()}")
-
-# ---------- Mutations ----------
-def parse_mutations_spec(spec: str, record_ids: List[str]) -> Dict[str, List[Tuple[int, Optional[str], str]]]:
-    """
-    変異指定文字列をパースする。戻り値:
-    { record_id: [ (pos, refAA_or_None, newAA), ... ] }
-
-    形式:
-      - 全レコード共通: "25=G,100=A"
-      - 個別ID指定:     "seq1:25=G,40=A;seq2:10=W"
-      - 参照AAチェック: "25A=G"
-    """
-    spec = spec.strip()
-
-    def parse_one_list(muts: str) -> List[Tuple[int, Optional[str], str]]:
-        out = []
-        items = [x.strip() for x in muts.split(",") if x.strip()]
-        for it in items:
-            if "=" not in it:
-                raise ValueError(f"Mutation item missing '=': {it}")
-            left, newaa = it.split("=", 1)
-            newaa = newaa.strip().upper()
-            m = re.fullmatch(r"(\d+)([A-Za-z]?)", left.strip())
-            if not m:
-                raise ValueError(f"Bad position/ref format: {it}")
-            pos = int(m.group(1))
-            ref = m.group(2).upper() if m.group(2) else None
-            out.append((pos, ref, newaa))
-        return out
-
-    if ":" in spec or ";" in spec:
-        result: Dict[str, List[Tuple[int, Optional[str], str]]] = {}
-        groups = [g.strip() for g in spec.split(";") if g.strip()]
-        for grp in groups:
-            if ":" not in grp:
-                raise ValueError(f"Missing ':' after record id in group: {grp}")
-            rid, muts = grp.split(":", 1)
-            rid = rid.strip()
-            result[rid] = parse_one_list(muts)
-        return result
-    else:
-        common = parse_one_list(spec)
-        return {rid: common[:] for rid in record_ids}
-
-def summarize_available_ids(records: List[Tuple[str, str, str]]) -> str:
-    ids = [rid for _, rid, _ in records]
-    if not ids:
-        return "(no records)"
-    if len(ids) <= 10:
-        return ", ".join(ids)
-    return ", ".join(ids[:10]) + f" ... (total {len(ids)} records)"
-
-def mutation_preview(seq: str, muts: List[Tuple[int, Optional[str], str]]) -> List[str]:
-    """各変異について 'pos old->new (status)' を返す。"""
-    out: List[str] = []
-    L = len(seq)
-    for pos, ref, newaa in muts:
-        if not (1 <= pos <= L):
-            out.append(f"{pos}: out-of-range (len={L}) -> {newaa}")
-            continue
-        old = seq[pos-1]
-        if ref is not None and old.upper() != ref:
-            out.append(f"{pos}: {old}->{newaa} (REF MISMATCH expected {ref})")
-        else:
-            status = "no-change" if old.upper() == newaa else "ok"
-            out.append(f"{pos}: {old}->{newaa} ({status})")
-    return out
-
-def context_snippet(seq: str, pos: int, window: int = 7) -> str:
-    """pos(1-based)周辺の文脈を '[...]' で示す簡易スニペットを返す。"""
-    i = pos - 1
-    L = len(seq)
-    if not (0 <= i < L):
-        return f"(pos {pos}/{L})"
-    left = max(0, i - window)
-    right = min(L, i + window + 1)
-    pre = seq[left:i]
-    target = seq[i]
-    post = seq[i+1:right]
-    return f"{pre}[{target}]{post} (pos {pos}/{L})"
-
-def apply_mutations(seq: str, muts: List[Tuple[int, Optional[str], str]], allow_any_aa: bool) -> Tuple[str, int, List[str]]:
-    """seqにmuts適用。戻り値: (new_seq, changed_count, per_site_messages)"""
-    s = list(seq)
-    L = len(s)
-    msgs: List[str] = []
-    changes = 0
-    for pos, ref, newaa in muts:
-        if not (1 <= pos <= L):
-            msgs.append(f"  - {pos}: SKIP (out-of-range; len={L})")
-            continue
-        idx = pos - 1
-        old = s[idx].upper()
-        if ref is not None and old != ref:
-            msgs.append(f"  - {pos}: SKIP (ref-mismatch: expected {ref}, found {old})")
-            continue
-        if (not allow_any_aa) and (newaa not in STD_AA and newaa != "X"):
-            msgs.append(f"  - {pos}: SKIP (newAA '{newaa}' not allowed)")
-            continue
-        if old == newaa:
-            msgs.append(f"  - {pos}: NO-CHANGE ({old}->{newaa})  {context_snippet(seq, pos)}")
-            continue
-        s[idx] = newaa
-        changes += 1
-        msgs.append(f"  - {pos}: OK ({old}->{newaa})       {context_snippet(seq, pos)}")
-    return "".join(s), changes, msgs
-
-def mutate_in_memory(records: List[Tuple[str, str, str]],
-                     mutations: str,
-                     allow_any_aa: bool = False,
-                     verbose: bool = True) -> Tuple[List[Tuple[str, str, str]], Dict[str, int], List[str]]:
-    """レコードに変異適用（メモリ内）。新レコード, 統計, ログを返す。"""
-    id_list = [rid for _, rid, _ in records]
-    specs = parse_mutations_spec(mutations, id_list)
-    unknown_ids = [rid for rid in specs.keys() if rid not in id_list]
-
-    logs: List[str] = []
-    if unknown_ids:
-        warn = f"[WARN] IDs not found in FASTA: {', '.join(unknown_ids)}"
-        logs.append(warn)
-        if verbose: print(warn)
-
-    out_records: List[Tuple[str, str, str]] = []
-    records_targeted = 0
-    records_changed = 0
-    residues_changed = 0
-
-    for header, rid, seq in records:
-        muts = specs.get(rid)
-        if not muts:
-            out_records.append((header, rid, seq))
-            continue
-
-        records_targeted += 1
-        if verbose:
-            print(f"\n[TARGET] {rid} (len={len(seq)}):")
-            for prev in mutation_preview(seq, muts):
-                print("  PREVIEW:", prev)
-
-        new_seq, local_changes, msgs = apply_mutations(seq, muts, allow_any_aa=allow_any_aa)
-        for m in msgs:
-            if verbose: print(m)
-
-        out_records.append((header, rid, new_seq))
-        residues_changed += local_changes
-        if local_changes > 0:
-            records_changed += 1
-
-        logs.append(f"[APPLY] {rid}: changes={local_changes}")
-
-    stats = {
-        "records_total": len(records),
-        "records_targeted": records_targeted,
-        "records_changed": records_changed,
-        "residues_changed": residues_changed,
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>FASTA Mutation Generator</title>
+  <style>
+    .drop-zone {
+      width: 300px;
+      padding: 20px;
+      border: 2px dashed #666;
+      border-radius: 10px;
+      text-align: center;
+      color: #666;
+      margin-bottom: 10px;
+      cursor: pointer;
     }
-    return out_records, stats, logs
+    .drop-zone.dragover {
+      background-color: #eef;
+      border-color: #00f;
+      color: #00f;
+    }
+    .file-button {
+      display: inline-block;
+      padding: 8px 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-bottom: 20px;
+    }
+    #selectedFileName {
+      font-weight: bold;
+      margin-top: 5px;
+      margin-bottom: 15px;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <h1>FASTA Mutation Generator (Pyodide)</h1>
 
-def print_header(title: str):
-    print("="*len(title))
-    print(title)
-    print("="*len(title))
+  <!-- ドラッグ&ドロップ用 -->
+  <h2>FASTAファイルをドラッグ&ドロップ</h2>
+  <div id="dropZone" class="drop-zone">ここにFASTAファイルをドロップ</div>
 
-def tail_preview(path: str, n_lines: int = 12):
-    """出力FASTAの末尾プレビュー（行数n_lines）。"""
-    try:
-        lines = Path(path).read_text(encoding="utf-8").splitlines()
-        print(f"\n[OUTPUT PREVIEW] {path} (last {n_lines} lines)")
-        for line in lines[-n_lines:]:
-            print("  ", line)
-    except Exception as e:
-        print(f"[PREVIEW ERR] {e}")
+  <!-- クリックして選択用 -->
+  <h2>またはクリックしてFASTAファイルを選択</h2>
+  <input type="file" id="fastaFile" accept=".fasta,.fa" style="display:none;" />
+  <button class="file-button" onclick="document.getElementById('fastaFile').click()">ファイルを選択</button>
 
-# ---------- Auto-run with USER SETTINGS ----------
-def run_from_settings():
-    print_header("FASTA Utility (User-Settings Mode)")
-    print(f"[NOW]      {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"[MODE]     {MODE}")
-    print(f"[INPUT]    {Path(INPUT_FASTA).resolve()}")
-    if MODE.lower() == "mutate":
-        print(f"[OUTPUT]   {Path(OUTPUT_FASTA).resolve()}")
-        print(f"[MUTATIONS]{MUTATIONS}")
-        print(f"[OPTIONS]  allow_any_aa={ALLOW_ANY_AA}, wrap={WRAP_WIDTH}, verbose={VERBOSE}")
+  <!-- 現在選択されているファイル名表示 -->
+  <div id="selectedFileName">現在選択されているファイル: なし</div>
 
-    if MODE.lower() == "check":
-        hits = show_non_header_lines(INPUT_FASTA)
-        print(f"\n[CHECK] non-header lines found: {len(hits)}")
-        for i, (lineno, text) in enumerate(hits, start=1):
-            print(f"  {i:04d}) line {lineno}\t{text}")
-        return 0
+  <hr>
 
-    elif MODE.lower() == "mutate":
-        recs = read_fasta(INPUT_FASTA)
-        if not recs:
-            print("[ERR] No records found in input FASTA.")
-            return 1
-        print(f"\n[RECORDS] total={len(recs)} ids(sample)={summarize_available_ids(recs)}")
-        new_recs, stats, logs = mutate_in_memory(
-            recs,
-            mutations=MUTATIONS,
-            allow_any_aa=ALLOW_ANY_AA,
-            verbose=VERBOSE
-        )
-        summary = f"[SUMMARY] targeted={stats['records_targeted']}, records_changed={stats['records_changed']}, residues_changed={stats['residues_changed']}"
-        print("\n" + summary)
+  <!-- 単一置換モード -->
+  <h2>① 単一置換モード</h2>
+  <label>置換する位置（カンマ区切り、最大3つまで）:</label><br>
+  <input type="text" id="positions1" placeholder="例: 1,5,10"><br><br>
+  <button id="runBtn1">変異を生成する（単一位置ごとに19配列）</button>
+  <p id="status1"></p>
+  <a id="downloadLink1" style="display:none;">結果をダウンロード</a>
 
-        write_fasta(new_recs, OUTPUT_FASTA, wrap=WRAP_WIDTH)
-        tail_preview(OUTPUT_FASTA, n_lines=PREVIEW_LINES)
-        return 0
+  <hr>
 
-    else:
-        print("[ERR] MODE must be 'check' or 'mutate'")
-        return 2
+  <!-- 全組み合わせモード -->
+  <h2>② 全組み合わせモード</h2>
+  <label>置換する位置（カンマ区切り、最大3つまで）:</label><br>
+  <input type="text" id="positions2" placeholder="例: 1,5,10"><br><br>
+  <button id="runBtn2">変異を生成する（全組み合わせ）</button>
+  <p id="status2"></p>
+  <a id="downloadLink2" style="display:none;">結果をダウンロード</a>
 
-if __name__ == "__main__":
-    if RUN:
-        sys.exit(run_from_settings())
-    else:
-        # RUN=False の場合は何もしない（誤実行防止）
-        print("RUN is False. Set RUN=True in USER SETTINGS to execute.")
-        sys.exit(0)
+  <!-- Pyodide -->
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+  <script>
+    // --- ドラッグ&ドロップ処理 ---
+    function setupDropZone(dropZoneId, fileInputId, displayId) {
+      const dropZone = document.getElementById(dropZoneId);
+      const fileInput = document.getElementById(fileInputId);
+      const display = document.getElementById(displayId);
+
+      // ドラッグ操作
+      dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("dragover");
+      });
+      dropZone.addEventListener("dragleave", () => {
+        dropZone.classList.remove("dragover");
+      });
+      dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) {
+          fileInput.files = e.dataTransfer.files;
+          display.textContent = "現在選択されているファイル: " + e.dataTransfer.files[0].name;
+        }
+      });
+
+      // ファイル選択ボタンの変更も同期
+      fileInput.addEventListener("change", () => {
+        if (fileInput.files.length) {
+          display.textContent = "現在選択されているファイル: " + fileInput.files[0].name;
+        }
+      });
+    }
+
+    async function main() {
+      const pyodide = await loadPyodide();
+      await pyodide.loadPackage("biopython");
+
+      const code = `
+from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+import io
+from itertools import product
+
+amino_acids = "ACDEFGHIKLMNPQRSTVWY"
+
+def replace_amino_acids_single(input_content, positions):
+    input_handle = io.StringIO(input_content)
+    records = SeqIO.parse(input_handle, "fasta")
+    output = io.StringIO()
+    for record in records:
+        original_sequence = str(record.seq)
+        for position in positions:
+            if position < 1 or position > len(original_sequence):
+                continue
+            target_aa = original_sequence[position - 1]
+            for replacement in amino_acids:
+                if replacement == target_aa:
+                    continue
+                mutated_sequence = list(original_sequence)
+                mutated_sequence[position - 1] = replacement
+                mutated_record = SeqRecord(
+                    Seq("".join(mutated_sequence)),
+                    id=f"{record.id}-{target_aa}{position}{replacement}",
+                    description=""
+                )
+                SeqIO.write(mutated_record, output, "fasta")
+    return output.getvalue()
+
+def replace_amino_acids_combination(input_content, positions):
+    input_handle = io.StringIO(input_content)
+    records = SeqIO.parse(input_handle, "fasta")
+    output = io.StringIO()
+    for record in records:
+        original_sequence = str(record.seq)
+        for replacements in product(amino_acids, repeat=len(positions)):
+            mutated_sequence = list(original_sequence)
+            new_id_parts = []
+            valid = True
+            for pos, rep in zip(positions, replacements):
+                if pos < 1 or pos > len(original_sequence):
+                    valid = False
+                    break
+                target_aa = original_sequence[pos - 1]
+                if rep == target_aa:
+                    valid = False
+                    break
+                mutated_sequence[pos - 1] = rep
+                new_id_parts.append(f"{target_aa}{pos}{rep}")
+            if not valid:
+                continue
+            mutated_record = SeqRecord(
+                Seq("".join(mutated_sequence)),
+                id=f"{record.id}-{'_'.join(new_id_parts)}",
+                description=""
+            )
+            SeqIO.write(mutated_record, output, "fasta")
+    return output.getvalue()
+`;
+      pyodide.runPython(code);
+
+      async function runMutation(funcName, posInputId, statusId, dlId, fileInputId, fileName) {
+        const fileInput = document.getElementById(fileInputId);
+        const posInput = document.getElementById(posInputId).value;
+        if (!fileInput.files.length) {
+          alert("FASTAファイルを選択またはドロップしてください");
+          return;
+        }
+        const positions = posInput.split(",").map(x => parseInt(x.trim())).filter(x => !isNaN(x));
+        if (positions.length === 0 || positions.length > 3) {
+          alert("置換する位置は1〜3個まで入力してください");
+          return;
+        }
+        document.getElementById(statusId).innerText = "処理中...";
+        const file = fileInput.files[0];
+        const text = await file.text();
+        const result = pyodide.runPython(\`
+\${funcName}("""\${text}""", \${JSON.stringify(positions)})
+\`);
+        const blob = new Blob([result], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const dl = document.getElementById(dlId);
+        dl.href = url;
+        dl.download = fileName;
+        dl.style.display = "block";
+        dl.innerText = "結果をダウンロード";
+        document.getElementById(statusId).innerText = "完了!";
+      }
+
+      document.getElementById("runBtn1").onclick = () =>
+        runMutation("replace_amino_acids_single", "positions1", "status1", "downloadLink1", "fastaFile", "mutations_single.fasta");
+      document.getElementById("runBtn2").onclick = () =>
+        runMutation("replace_amino_acids_combination", "positions2", "status2", "downloadLink2", "fastaFile", "mutations_combination.fasta");
+
+      setupDropZone("dropZone", "fastaFile", "selectedFileName");
+    }
+    main();
+  </script>
+</body>
+</html>
