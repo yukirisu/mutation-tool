@@ -38,7 +38,7 @@
 </style>
 </head>
 <body>
-<h1>FASTA Mutation Generator (Pyodide)v</h1>
+<h1>FASTA Mutation Generator (Pyodide)</h1>
 
 <h2>FASTAファイルをドラッグ&ドロップ</h2>
 <div id="dropZone" class="drop-zone">ここにFASTAファイルをドロップ</div>
@@ -67,12 +67,28 @@
 <p id="status2"></p>
 <a id="downloadLink2" style="display:none;"></a>
 
+<hr>
+
+<h2>③ 指定変異モード</h2>
+<label>置換する箇所とアミノ酸（例: 101V,104F,179N）:</label><br>
+<input type="text" id="positions3" placeholder="例: 101V,104F,179N"><br><br>
+<button id="runBtn3">変異を適用する</button>
+<p id="status3"></p>
+<a id="downloadLink3" style="display:none;"></a>
+
 <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
 <script>
-async function main() {
-  // body全体でドラッグ＆ドロップのデフォルト動作を抑制
-  document.body.addEventListener("dragover", e => e.preventDefault());
-  document.body.addEventListener("drop", e => e.preventDefault());
+const validExtensions = [".fasta", ".fa"];
+
+function isValidFasta(file){
+  const name = file.name.toLowerCase();
+  return validExtensions.some(ext => name.endsWith(ext));
+}
+
+async function main(){
+  // body全体でドラッグ&ドロップのデフォルト抑制
+  document.body.addEventListener("dragover", e=>e.preventDefault());
+  document.body.addEventListener("drop", e=>e.preventDefault());
 
   const pyodide = await loadPyodide();
   await pyodide.loadPackage("biopython");
@@ -85,6 +101,7 @@ from Bio.SeqRecord import SeqRecord
 import io
 from itertools import product
 amino_acids = "ACDEFGHIKLMNPQRSTVWY"
+
 def replace_amino_acids_single(input_content, positions):
     input_handle = io.StringIO(input_content)
     records = SeqIO.parse(input_handle, "fasta")
@@ -128,7 +145,25 @@ def replace_amino_acids_combination(input_content, positions):
                                        description="")
             SeqIO.write(mutated_record, output, "fasta")
     return output.getvalue()
-  `;
+
+def replace_amino_acids_specified(input_content, mutations):
+    input_handle = io.StringIO(input_content)
+    records = SeqIO.parse(input_handle, "fasta")
+    output = io.StringIO()
+    for record in records:
+        seq_list = list(str(record.seq))
+        new_id_parts = []
+        for pos, aa in mutations:
+            if pos < 1 or pos > len(seq_list):
+                continue
+            seq_list[pos-1] = aa
+            new_id_parts.append(f"{pos}{aa}")
+        mutated_record = SeqRecord(Seq("".join(seq_list)),
+                                   id=f"{record.id}-{'_'.join(new_id_parts)}",
+                                   description="")
+        SeqIO.write(mutated_record, output, "fasta")
+    return output.getvalue()
+`;
   pyodide.runPython(code);
 
   const fileInput = document.getElementById("fastaFile");
@@ -136,38 +171,55 @@ def replace_amino_acids_combination(input_content, positions):
   const selectedName = document.getElementById("selectedFileName");
 
   // ドラッグ&ドロップ設定
-  dropZone.addEventListener("dragover", e => {
-    e.preventDefault();
-    dropZone.classList.add("dragover");
+  dropZone.addEventListener("dragover", e=>{
+    e.preventDefault(); dropZone.classList.add("dragover");
   });
-  dropZone.addEventListener("dragleave", e => {
-    e.preventDefault();
-    dropZone.classList.remove("dragover");
+  dropZone.addEventListener("dragleave", e=>{
+    e.preventDefault(); dropZone.classList.remove("dragover");
   });
-  dropZone.addEventListener("drop", e => {
-    e.preventDefault();
-    dropZone.classList.remove("dragover");
-    if(e.dataTransfer.files.length > 0){
+  dropZone.addEventListener("drop", e=>{
+    e.preventDefault(); dropZone.classList.remove("dragover");
+    if(e.dataTransfer.files.length>0){
+      const file = e.dataTransfer.files[0];
+      if(!isValidFasta(file)){
+        alert("FASTAファイル(.fasta/.fa)のみアップロード可能です"); return;
+      }
       fileInput.files = e.dataTransfer.files;
-      selectedName.textContent = "現在選択されているファイル: " + e.dataTransfer.files[0].name;
+      selectedName.textContent = "現在選択されているファイル: " + file.name;
     }
   });
 
-  // クリック選択の変更同期
-  fileInput.addEventListener("change", () => {
-    if(fileInput.files.length > 0){
-      selectedName.textContent = "現在選択されているファイル: " + fileInput.files[0].name;
+  // クリック選択
+  fileInput.addEventListener("change", ()=>{
+    if(fileInput.files.length>0){
+      const file = fileInput.files[0];
+      if(!isValidFasta(file)){
+        alert("FASTAファイル(.fasta/.fa)のみ選択可能です");
+        fileInput.value = "";
+        selectedName.textContent = "現在選択されているファイル: なし";
+        return;
+      }
+      selectedName.textContent = "現在選択されているファイル: " + file.name;
     }
   });
 
-  // 変異生成関数
-  async function runMutation(funcName, posInputId, statusId, dlId, fileName) {
-    if(fileInput.files.length === 0){
-      alert("FASTAファイルを選択またはドロップしてください");
-      return;
+  async function runMutation(funcName, posInputId, statusId, dlId, fileName){
+    if(fileInput.files.length===0){ alert("FASTAファイルを選択またはドロップしてください"); return; }
+    const positions = document.getElementById(posInputId).value.split(",").map(x=>x.trim()).filter(x=>x!=="");
+    if(funcName!=="replace_amino_acids_specified"){
+      const posNums = positions.map(x=>parseInt(x)).filter(x=>!isNaN(x));
+      if(posNums.length===0||posNums.length>3){ alert("置換する位置は1〜3個まで入力してください"); return; }
+      positions = posNums;
+    } else {
+      const mutations = positions.map(s=>{
+        const match = s.match(/(\d+)([ACDEFGHIKLMNPQRSTVWY])/i);
+        if(match) return [parseInt(match[1]), match[2].toUpperCase()];
+        return null;
+      }).filter(x=>x!==null);
+      if(mutations.length===0){ alert("正しい形式で指定してください（例: 101V,104F,179N）"); return; }
+      positions = mutations;
     }
-    const positions = document.getElementById(posInputId).value.split(",").map(x=>parseInt(x.trim())).filter(x=>!isNaN(x));
-    if(positions.length===0 || positions.length>3){ alert("置換する位置は1〜3個まで入力してください"); return; }
+
     document.getElementById(statusId).innerText="処理中...";
     const text = await fileInput.files[0].text();
     const result = pyodide.runPython(`${funcName}("""${text}""", ${JSON.stringify(positions)})`);
@@ -181,9 +233,11 @@ def replace_amino_acids_combination(input_content, positions):
     document.getElementById(statusId).innerText="完了!";
   }
 
-  document.getElementById("runBtn1").onclick = () => runMutation("replace_amino_acids_single","positions1","status1","downloadLink1","mutations_single.fasta");
-  document.getElementById("runBtn2").onclick = () => runMutation("replace_amino_acids_combination","positions2","status2","downloadLink2","mutations_combination.fasta");
+  document.getElementById("runBtn1").onclick = ()=> runMutation("replace_amino_acids_single","positions1","status1","downloadLink1","mutations_single.fasta");
+  document.getElementById("runBtn2").onclick = ()=> runMutation("replace_amino_acids_combination","positions2","status2","downloadLink2","mutations_combination.fasta");
+  document.getElementById("runBtn3").onclick = ()=> runMutation("replace_amino_acids_specified","positions3","status3","downloadLink3","mutations_specified.fasta");
 }
+
 main();
 </script>
 </body>
