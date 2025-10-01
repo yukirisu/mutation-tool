@@ -3,21 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>StructAlign — In‑Browser PDB Alignment</title>
+  <title>StructAlign — In-Browser PDB Alignment</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
   <script src="https://unpkg.com/ngl@latest/dist/ngl.js"></script>
   <style>
-    body { background: #0b0d10; }
+    body { background: #ffffff; color: #111; }
     header { margin-top: 1rem; }
-    .stage { width: 100%; height: 440px; background: #0f141b; border-radius: 12px; }
+    .stage { width: 100%; height: 440px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; }
     .muted { opacity: .8 }
-    code.kbd { background:#111; padding:.15rem .35rem; border-radius:6px }
+    code.kbd { background:#f3f4f6; padding:.15rem .35rem; border-radius:6px }
   </style>
 </head>
 <body>
   <main class="container">
     <header>
-      <h1>StructAlign <small class="muted">— client‑side PDB alignment (Kabsch)</small></h1>
+      <h1>StructAlign <small class="muted">— client-side PDB alignment (Kabsch)</small></h1>
       <p class="muted">Drop two <code>.pdb</code> files. All processing happens in your browser. No server required.</p>
     </header>
 
@@ -38,23 +38,31 @@
           <input name="chain_mobile" value="A" maxlength="2">
         </label>
       </div>
-      <details>
+      <details open>
         <summary>Advanced matching</summary>
         <small class="muted">
-          Matching strategy controls how CA pairs are chosen for alignment.
+          Matching strategy controls how atom pairs are chosen for alignment. For highly homologous enzymes, use Residue-number + Backbone (default).
         </small>
         <div class="grid">
           <label>
             Strategy
             <select name="match_strategy">
               <option value="seq">Sequence alignment (global, simple score)</option>
-              <option value="resnum">Residue-number intersection</option>
+              <option value="resnum" selected>Residue-number intersection</option>
               <option value="index">Index order (first N CA)</option>
             </select>
           </label>
           <label>
-            Min matched Cα
-            <input name="min_pairs" type="number" value="8" min="3" max="100000">
+            Atom set
+            <select name="atom_set">
+              <option value="bb" selected>Backbone (N, CA, C, O)</option>
+              <option value="ca">Cα only</option>
+              <option value="heavy">All heavy atoms (no H)</option>
+            </select>
+          </label>
+          <label>
+            Min matched pairs
+            <input name="min_pairs" type="number" value="12" min="3" max="100000">
           </label>
         </div>
       </details>
@@ -64,7 +72,7 @@
     <article id="result" style="display:none">
       <h3>Result</h3>
       <p>
-        <b>Matched Cα:</b> <span id="matched">0</span>
+        <b>Matched pairs:</b> <span id="matched">0</span>
         <b style="margin-left:1rem">RMSD (Å):</b> <span id="rmsd">–</span>
       </p>
       <div class="grid">
@@ -89,9 +97,9 @@
   </main>
 
 <script>
-// --- Lightweight PDB parser (CA-centric) ---
+/* ----------------- PDB parsing ----------------- */
 function parsePDB(pdbText) {
-  const atoms = []; // {serial, name, resName, chainID, resSeq, iCode, x,y,z, line}
+  const atoms = []; // {name,resName,chainID,resSeq,iCode,x,y,z,element,line}
   const lines = pdbText.split(/\r?\n/);
   for (const line of lines) {
     if (line.startsWith('ATOM') || line.startsWith('HETATM')) {
@@ -103,7 +111,9 @@ function parsePDB(pdbText) {
       const x = parseFloat(line.slice(30,38));
       const y = parseFloat(line.slice(38,46));
       const z = parseFloat(line.slice(46,54));
-      atoms.push({ name, resName, chainID, resSeq, iCode, x, y, z, line });
+      let element = line.length >= 78 ? line.slice(76,78).trim() : '';
+      if(!element){ const c = name.trim()[0]; element = (c && c.toUpperCase()!=='H') ? c.toUpperCase() : 'H'; }
+      atoms.push({ name, resName, chainID, resSeq, iCode, x, y, z, element, line });
     }
   }
   return atoms;
@@ -116,11 +126,28 @@ function selectChainCA(atoms, chainID) {
     if (chainID && a.chainID !== chainID) continue;
     if (a.name === 'CA') {
       const key = `${a.resSeq}:${a.iCode}`;
-      ca.push({ key, resSeq:a.resSeq, iCode:a.iCode, resName:a.resName, xyz:[a.x,a.y,a.z] });
-      byKey.set(key, a.xyz);
+      ca.push({ key, resSeq:a.resSeq, iCode:a.iCode, resName:a.resName, chainID:a.chainID, xyz:[a.x,a.y,a.z] });
+      byKey.set(key, [a.x,a.y,a.z]);
     }
   }
   return { list: ca, byKey };
+}
+
+function selectAtoms(atoms, chainID, atomSet){
+  // Returns list of { resKey, atomName, xyz }
+  const list=[]; const map=new Map();
+  const isBB = (n)=> n==='N' || n==='CA' || n==='C' || n==='O';
+  for(const a of atoms){
+    if(chainID && a.chainID!==chainID) continue;
+    if(atomSet==='ca' && a.name!=='CA') continue;
+    if(atomSet==='bb' && !isBB(a.name)) continue;
+    if(atomSet==='heavy' && a.element==='H') continue;
+    const resKey = `${a.resSeq}:${a.iCode}`;
+    const compKey = `${resKey}|${a.name}`;
+    list.push({resKey, atomName:a.name, xyz:[a.x,a.y,a.z]});
+    map.set(compKey, [a.x,a.y,a.z]);
+  }
+  return { list, map };
 }
 
 const threeToOne = {
@@ -130,13 +157,10 @@ const threeToOne = {
   SER:'S', THR:'T', TRP:'W', TYR:'Y', VAL:'V',
   SEC:'U', PYL:'O'
 };
+function seqFromCA(list) { return list.map(r => (threeToOne[r.resName] || 'X')).join(''); }
 
-function seqFromCA(list) {
-  return list.map(r => (threeToOne[r.resName] || 'X')).join('');
-}
-
-// --- Simple global alignment (match/mismatch/gap scoring) ---
-function needlemanWunsch(a, b, {match=1, mismatch=-1, gap=-2}={}) {
+/* --------- Simple global alignment for CA strategy --------- */
+function needlemanWunsch(a, b, {match=2, mismatch=-1, gap=-2}={}) {
   const n=a.length, m=b.length;
   const dp = Array.from({length:n+1},()=>Array(m+1).fill(0));
   const bt = Array.from({length:n+1},()=>Array(m+1).fill(0)); // 0 diag, 1 up, 2 left
@@ -152,7 +176,6 @@ function needlemanWunsch(a, b, {match=1, mismatch=-1, gap=-2}={}) {
       bt[i][j] = (maxv===scoreDiag)?0:(maxv===scoreUp?1:2);
     }
   }
-  // Traceback
   let i=n, j=m; const A=[], B=[];
   while(i>0 || j>0){
     const move = bt[i][j];
@@ -163,10 +186,8 @@ function needlemanWunsch(a, b, {match=1, mismatch=-1, gap=-2}={}) {
   return { a:A.reverse().join(''), b:B.reverse().join('') };
 }
 
-// --- Kabsch alignment ---
-function meanVec(P){
-  const n=P.length; return [0,1,2].map(k=>P.reduce((s,p)=>s+p[k],0)/n);
-}
+/* ----------------- Kabsch + helpers ----------------- */
+function meanVec(P){ const n=P.length; return [0,1,2].map(k=>P.reduce((s,p)=>s+p[k],0)/n); }
 function subVec(a,b){ return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
 function addVec(a,b){ return [a[0]+b[0], a[1]+b[1], a[2]+b[2]]; }
 function matMul(A,B){
@@ -176,19 +197,14 @@ function matMul(A,B){
 }
 function matVec(A,v){ return [A[0][0]*v[0]+A[0][1]*v[1]+A[0][2]*v[2], A[1][0]*v[0]+A[1][1]*v[1]+A[1][2]*v[2], A[2][0]*v[0]+A[2][1]*v[1]+A[2][2]*v[2]]; }
 
-// SVD via numeric.js-like minimal impl using Eigen decomposition of H^T H is complex; instead use Web API: create a Float64Array and rely on custom SVD. To keep self-contained, use a tiny JS SVD for 3x3.
 function svd3x3(M){
-  // Adapted small SVD for 3x3 using numeric stability assumptions (for alignment use). For robustness keep a minimal library-free approach.
-  // We'll use Eigen decomposition of (M^T M) to get V and singular values, then compute U = M V S^{-1}
   function transpose(A){ return [[A[0][0],A[1][0],A[2][0]],[A[0][1],A[1][1],A[2][1]],[A[0][2],A[1][2],A[2][2]]]; }
   function matMul3(A,B){ return matMul(A,B); }
   const Mt = transpose(M);
   const MtM = matMul3(Mt,M);
-  // Eigen decomposition of symmetric 3x3 (Jacobi)
   function eigSym3(A){
     let V=[[1,0,0],[0,1,0],[0,0,1]]; let B=[[...A[0]],[...A[1]],[...A[2]]];
     for(let iter=0; iter<32; iter++){
-      // find largest off-diagonal
       let p=0,q=1; let max=Math.abs(B[0][1]);
       const pairs=[[0,1],[0,2],[1,2]];
       for(const [i,j] of pairs){ const v=Math.abs(B[i][j]); if(v>max){max=v;p=i;q=j;} }
@@ -204,22 +220,17 @@ function svd3x3(M){
     const vals=[B[0][0],B[1][1],B[2][2]]; return {vals, vecs:V};
   }
   const {vals, vecs} = eigSym3(MtM);
-  // singular values are sqrt of eigenvalues (clamp small negatives)
   const Svals = vals.map(v=> Math.sqrt(Math.max(0,v)) );
-  // V columns are eigenvectors
   const V = [[vecs[0][0],vecs[0][1],vecs[0][2]],[vecs[1][0],vecs[1][1],vecs[1][2]],[vecs[2][0],vecs[2][1],vecs[2][2]]];
-  // compute U = M * V * S^{-1}
   const Sinv = [[ Svals[0]?1/Svals[0]:0,0,0 ],[0,Svals[1]?1/Svals[1]:0,0],[0,0,Svals[2]?1/Svals[2]:0]];
   const U = matMul(matMul(M,V),Sinv);
   return {U, S:Svals, Vt: transpose(V)};
 }
 
 function kabsch(P, Q){
-  // P->Q, P and Q arrays of vec3
   const Pc = meanVec(P), Qc = meanVec(Q);
   const X = P.map(p=>subVec(p,Pc));
   const Y = Q.map(q=>subVec(q,Qc));
-  // H = X^T Y
   const H=[[0,0,0],[0,0,0],[0,0,0]];
   for(let i=0;i<X.length;i++){
     const x=X[i], y=Y[i];
@@ -229,10 +240,11 @@ function kabsch(P, Q){
   }
   const {U, Vt} = svd3x3(H);
   let R = matMul(Vt, [[U[0][0],U[1][0],U[2][0]],[U[0][1],U[1][1],U[2][1]],[U[0][2],U[1][2],U[2][2]]]);
-  // ensure right-handed
   const det = R[0][0]*(R[1][1]*R[2][2]-R[1][2]*R[2][1]) - R[0][1]*(R[1][0]*R[2][2]-R[1][2]*R[2][0]) + R[0][2]*(R[1][0]*R[2][1]-R[1][1]*R[2][0]);
   if(det<0){ Vt[2][0]*=-1; Vt[2][1]*=-1; Vt[2][2]*=-1; R = matMul(Vt, [[U[0][0],U[1][0],U[2][0]],[U[0][1],U[1][1],U[2][1]],[U[0][2],U[1][2],U[2][2]]]); }
-  const t = subVec(Qc, matVec(R,Pc));
+  const t = [ Qc[0] - (R[0][0]*Pc[0]+R[0][1]*Pc[1]+R[0][2]*Pc[2]),
+              Qc[1] - (R[1][0]*Pc[0]+R[1][1]*Pc[1]+R[1][2]*Pc[2]),
+              Qc[2] - (R[2][0]*Pc[0]+R[2][1]*Pc[1]+R[2][2]*Pc[2]) ];
   return {R,t};
 }
 
@@ -241,44 +253,58 @@ function rmsd(A,B){
   return Math.sqrt(s/A.length);
 }
 
-// --- Build matched pairs according to strategy ---
-function matchPairs(strategy, caT, caM){
+/* ----------------- Matching strategies ----------------- */
+function matchPairs(strategy, caT, caM, atomSet, atomsT, atomsM){
   if (strategy==='resnum'){
-    const mapT = new Map(caT.list.map(r=>[r.key, r]));
-    const mapM = new Map(caM.list.map(r=>[r.key, r]));
-    const common = [...mapT.keys()].filter(k=>mapM.has(k)).sort((a,b)=>{
-      const ai=parseInt(a.split(':')[0]), bi=parseInt(b.split(':')[0]); return ai-bi; });
-    const T=[], M=[]; for(const k of common){ T.push(mapT.get(k).xyz); M.push(mapM.get(k).xyz); }
+    if(atomSet==='ca'){
+      const mapT = new Map(caT.list.map(r=>[r.key, r]));
+      const mapM = new Map(caM.list.map(r=>[r.key, r]));
+      const common = [...mapT.keys()].filter(k=>mapM.has(k)).sort((a,b)=>{
+        const ai=parseInt(a.split(':')[0]), bi=parseInt(b.split(':')[0]); return ai-bi; });
+      const T=[], M=[]; for(const k of common){ T.push(mapT.get(k).xyz); M.push(mapM.get(k).xyz); }
+      return {T,M, count:T.length};
+    }
+    // BB or HEAVY: match by residue key + atom name
+    const chainT = caT.list[0]?.chainID || null;
+    const chainM = caM.list[0]?.chainID || null;
+    const selT = selectAtoms(atomsT, chainT, atomSet);
+    const selM = selectAtoms(atomsM, chainM, atomSet);
+    const keysT = [...selT.map.keys()];
+    const common = keysT.filter(k=>selM.map.has(k)).sort((a,b)=>{
+      const [ra,na]=a.split('|'); const [rb,nb]=b.split('|');
+      const ai=parseInt(ra.split(':')[0]), bi=parseInt(rb.split(':')[0]);
+      return (ai-bi) || na.localeCompare(nb);
+    });
+    const T=[], M=[]; for(const k of common){ T.push(selT.map.get(k)); M.push(selM.map.get(k)); }
     return {T,M, count:T.length};
   }
   if (strategy==='index'){
     const n = Math.min(caT.list.length, caM.list.length);
-    const T=[], M=[]; for(let i=0;i<n;i++){ T.push(caT.list[i].xyz); M.push(caM.list[i].xyz);} 
+    const T=[], M=[]; for(let i=0;i<n;i++){ T.push(caT.list[i].xyz); M.push(caM.list[i].xyz);}
     return {T,M, count:n};
   }
-  // default: sequence alignment
+  // default: sequence alignment (CA only)
   const seqT = seqFromCA(caT.list);
   const seqM = seqFromCA(caM.list);
   const aln = needlemanWunsch(seqT, seqM, {match:2, mismatch:-1, gap:-2});
   let iT=0, iM=0; const T=[], M=[];
   for(let k=0;k<aln.a.length;k++){
     const a=aln.a[k], b=aln.b[k];
-    if(a!=='-' && b!=='-'){
-      T.push(caT.list[iT].xyz); M.push(caM.list[iM].xyz);
-    }
+    if(a!=='-' && b!=='-'){ T.push(caT.list[iT].xyz); M.push(caM.list[iM].xyz); }
     if(a!=='-') iT++; if(b!=='-') iM++;
   }
   return {T,M, count:T.length};
 }
 
-// --- Apply transform to full PDB text ---
+/* ----------------- Transform + render ----------------- */
 function transformPDB(atoms, R, t){
-  // rewrite ATOM/HETATM coordinates with transformed positions for the mobile file
   function fmt8(val){ return val.toFixed(3).toString().padStart(8,' '); }
   const out = [];
   for(const a of atoms){
     const v=[a.x,a.y,a.z];
-    const tv= addVec(matVec(R,v), t);
+    const tv=[ R[0][0]*v[0]+R[0][1]*v[1]+R[0][2]*v[2]+t[0],
+               R[1][0]*v[0]+R[1][1]*v[1]+R[1][2]*v[2]+t[1],
+               R[2][0]*v[0]+R[2][1]*v[1]+R[2][2]*v[2]+t[2] ];
     let line = a.line;
     line = line.substring(0,30) + fmt8(tv[0]) + fmt8(tv[1]) + fmt8(tv[2]) + line.substring(54);
     out.push(line);
@@ -287,10 +313,9 @@ function transformPDB(atoms, R, t){
   return out.join('\n');
 }
 
-// --- NGL viewers ---
 let stageT=null, stageM=null, alignedPDBText='';
 function renderNGL(divId, pdbText, color){
-  const stage = new NGL.Stage(divId, { backgroundColor: '#0f141b' });
+  const stage = new NGL.Stage(divId, { backgroundColor: '#ffffff' });
   stage.removeAllComponents();
   const blob = new Blob([pdbText], {type:'text/plain'});
   stage.loadFile(blob, {ext:'pdb'}).then(c=>{
@@ -307,8 +332,9 @@ async function alignSubmit(ev){
   const mobileFile = fd.get('pdb_mobile');
   const chainT = (fd.get('chain_target')||'A').trim() || 'A';
   const chainM = (fd.get('chain_mobile')||'A').trim() || 'A';
-  const strategy = fd.get('match_strategy') || 'seq';
-  const minPairs = parseInt(fd.get('min_pairs')||'8');
+  const strategy = fd.get('match_strategy') || 'resnum';
+  const atomSet = (fd.get('atom_set')||'bb');
+  const minPairs = parseInt(fd.get('min_pairs')||'12');
 
   const targText = await targetFile.text();
   const mobText  = await mobileFile.text();
@@ -316,13 +342,22 @@ async function alignSubmit(ev){
   const atomsM = parsePDB(mobText);
   const caT = selectChainCA(atomsT, chainT);
   const caM = selectChainCA(atomsM, chainM);
-  const {T, M, count} = matchPairs(strategy, caT, caM);
+
+  const {T, M, count} = matchPairs(
+    strategy, caT, caM, atomSet,
+    atomsT.filter(a=>!chainT||a.chainID===chainT),
+    atomsM.filter(a=>!chainM||a.chainID===chainM)
+  );
+
   if(count < Math.max(3,minPairs)){
-    alert(`Matched Cα is too small: ${count}. Try a different strategy/chain.`);
+    alert(`Matched pairs too small: ${count}. Try a different strategy/chain/atom set.`);
     return;
   }
+
   const {R,t} = kabsch(M, T);
-  const MT = M.map(v=> addVec(matVec(R,v), t));
+  const MT = M.map(v=> [ R[0][0]*v[0]+R[0][1]*v[1]+R[0][2]*v[2]+t[0],
+                         R[1][0]*v[0]+R[1][1]*v[1]+R[1][2]*v[2]+t[1],
+                         R[2][0]*v[0]+R[2][1]*v[1]+R[2][2]*v[2]+t[2] ]);
   const currentRMSD = rmsd(MT, T);
   alignedPDBText = transformPDB(atomsM, R, t);
 
@@ -334,9 +369,7 @@ async function alignSubmit(ev){
   stageM = renderNGL('stageM', alignedPDBText, 0xff7043);
 }
 
-// Download button
-const btn = document.getElementById('btnDownload');
-btn.addEventListener('click', ()=>{
+document.getElementById('btnDownload').addEventListener('click', ()=>{
   if(!alignedPDBText){ alert('Run alignment first.'); return; }
   const blob = new Blob([alignedPDBText], {type:'chemical/x-pdb'});
   const a = document.createElement('a');
