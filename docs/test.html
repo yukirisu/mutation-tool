@@ -9,21 +9,14 @@
   <!-- JSZip（ZIP一括DL用） -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <style>
-    :root{
-      --bg:#ffffff; --fg:#111111; --muted:#6b7280;
-      --accent:#2563eb; --border:#e5e7eb;
-    }
-    *{ box-sizing:border-box; }
-    html,body{ height:100%; }
+    :root{ --bg:#ffffff; --fg:#111; --muted:#6b7280; --accent:#2563eb; --border:#e5e7eb; }
+    *{ box-sizing:border-box; } html,body{ height:100%; }
     body{ margin:0; background:var(--bg); color:var(--fg);
       font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans",sans-serif; }
-
-    /* Taskbar */
     .taskbar{ position:sticky; top:0; z-index:50; background:var(--bg);
       border-bottom:1px solid var(--border); padding:8px 12px;
       display:flex; align-items:center; justify-content:space-between; gap:8px;}
-    .brand{ font-weight:700; }
-    .muted{ color:var(--muted); }
+    .brand{ font-weight:700; } .muted{ color:var(--muted); }
     .btn{ display:inline-flex; align-items:center; gap:6px;
       border:1px solid var(--border); background:#fff; color:#111;
       border-radius:8px; padding:8px 12px; cursor:pointer; font-weight:600; }
@@ -32,21 +25,15 @@
     .switch{ display:inline-flex; align-items:center; gap:6px; color:var(--muted);
       padding:4px 8px; border-radius:8px; border:1px dashed var(--border); background:#fff; }
     .badge{ display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid var(--border); background:#fff; font-size:12px; }
-    .badge.good{ border-color:#10b981; } .badge.warn{ border-color:#f59e0b; }
-    .badge.err{ border-color:#ef4444; color:#b91c1c; }
+    .badge.good{ border-color:#10b981; } .badge.warn{ border-color:#f59e0b; } .badge.err{ border-color:#ef4444; color:#b91c1c; }
     .sep{ width:1px; height:28px; background:var(--border); margin:0 4px; }
-
     .container{ max-width:1200px; margin:16px auto; padding:0 16px 48px; }
-    h1{ font-size:20px; margin:16px 0 8px; }
-    p.desc{ margin:0 0 12px; color:var(--muted); }
-    .grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-    @media (max-width: 960px){ .grid{ grid-template-columns: 1fr; } }
+    h1{ font-size:20px; margin:16px 0 8px; } p.desc{ margin:0 0 12px; color:var(--muted); }
+    .grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; } @media (max-width:960px){ .grid{ grid-template-columns:1fr; } }
     .panel{ background:#fff; border:1px solid var(--border); border-radius:12px; padding:12px; }
     .stage{ width:100%; height:520px; border:1px solid var(--border); border-radius:12px; background:#fff; }
-    table{ width:100%; border-collapse:collapse; font-size:14px; }
-    th,td{ border:1px solid var(--border); padding:8px 10px; text-align:left; }
-    tr:hover{ background:#f9fafb; }
-    .err{ color:#b00020; font-weight:600; margin-top:6px; }
+    table{ width:100%; border-collapse:collapse; font-size:14px; } th,td{ border:1px solid var(--border); padding:8px 10px; text-align:left; }
+    tr:hover{ background:#f9fafb; } .err{ color:#b00020; font-weight:600; margin-top:6px; }
     input[type="file"]{ display:none; }
   </style>
 </head>
@@ -60,18 +47,11 @@
       <span id="statusBadge" class="badge">Ready</span>
     </div>
     <div>
-      <!-- hidden file inputs -->
       <input type="file" id="pdb_template" accept=".pdb" />
       <input type="file" id="pdb_files" accept=".pdb" multiple />
-
       <button class="btn" id="btnPickTemplate">テンプレート選択</button>
       <button class="btn" id="btnPickInputs">対象ファイル選択</button>
-
-      <label class="switch">
-        <input type="checkbox" id="folderMode" />
-        <span>フォルダを選ぶ</span>
-      </label>
-
+      <label class="switch"><input type="checkbox" id="folderMode" /> <span>フォルダを選ぶ</span></label>
       <span class="sep"></span>
       <button class="btn primary" id="btnRun">アラインメント実行</button>
       <button class="btn" id="btnDownloadAll" disabled>一括DL (ZIP)</button>
@@ -82,10 +62,7 @@
 
   <div class="container">
     <h1>構造アラインメント（配列は不使用）</h1>
-    <p class="desc">
-      テンプレートPDB 1件と、複数のPDB（ファイルまたはフォルダ）をローカルで読み込み、Kabsch法で最小二乗重ね合わせ（構造アライン）を行います。<br />
-      データはブラウザ外に送信されません。
-    </p>
+    <p class="desc">テンプレートPDB 1件と複数PDB（ファイル/フォルダ）をローカルで読み込み、Kabsch法で重ね合わせします。データは外部送信されません。</p>
 
     <div class="grid">
       <div class="panel">
@@ -107,9 +84,7 @@
       <div id="err" class="err"></div>
       <div style="overflow:auto;">
         <table>
-          <thead>
-            <tr><th>ファイル</th><th>RMSD(Å)</th><th>操作</th></tr>
-          </thead>
+          <thead><tr><th>ファイル</th><th>RMSD(Å)</th><th>操作</th></tr></thead>
           <tbody id="resultsBody"></tbody>
         </table>
       </div>
@@ -122,26 +97,17 @@
     const stageM = new NGL.Stage("stageM", { backgroundColor: "#ffffff" });
     const statusBadge = document.getElementById("statusBadge");
 
-    // IDで管理（ファイル名の記号混入・日本語でも安全）
     let ID_SEQ = 0;
     const STORE = new Map(); // id -> {name, text, rmsd, count}
     let lastPreviewId = null;
 
-    function setStatus(text, type=""){
-      statusBadge.textContent = text;
-      statusBadge.className = "badge " + (type||"");
-    }
-    function showError(msg){
-      document.getElementById("err").textContent = msg || "";
-      setStatus(msg ? "Error" : "Ready", msg ? "err" : "");
-    }
+    function setStatus(text, type=""){ statusBadge.textContent = text; statusBadge.className = "badge " + (type||""); }
+    function showError(msg){ document.getElementById("err").textContent = msg || ""; setStatus(msg ? "Error" : "Ready", msg ? "err" : ""); }
     function safeZipPath(name){ return name.replace(/[\\:*?"<>|]/g, "_"); }
     function safeFileName(name){ return name.replace(/[\\/:*?"<>|]/g, "_"); }
-    function updateBulkButton(){
-      document.getElementById("btnDownloadAll").disabled = (STORE.size === 0);
-    }
+    function updateBulkButton(){ document.getElementById("btnDownloadAll").disabled = (STORE.size === 0); }
 
-    /* ===== File pickers on Taskbar ===== */
+    /* ===== File pickers ===== */
     const inpTemplate = document.getElementById("pdb_template");
     const inpFiles    = document.getElementById("pdb_files");
     const chkFolder   = document.getElementById("folderMode");
@@ -149,18 +115,16 @@
 
     document.getElementById("btnPickTemplate").addEventListener("click", ()=> inpTemplate.click());
     document.getElementById("btnPickInputs").addEventListener("click", ()=> inpFiles.click());
-
     chkFolder.addEventListener("change", ()=>{
       if(chkFolder.checked){ inpFiles.setAttribute("webkitdirectory",""); inpFiles.removeAttribute("multiple"); }
       else{ inpFiles.removeAttribute("webkitdirectory"); inpFiles.setAttribute("multiple",""); }
       inpFiles.value = "";
     });
-
     inpTemplate.addEventListener("change", ()=>{
       if(inpTemplate.files.length){
         setStatus(`Template: ${inpTemplate.files[0].name}`,"good");
-        loadTextFile(inpTemplate.files[0]).then(t=> renderPDB(stageT, t, 0x2196f3));
-      }else setStatus("Ready");
+        loadTextFile(inpTemplate.files[0]).then(t=> renderPDB(stageT, t, "#2196f3"));
+      } else setStatus("Ready");
     });
     inpFiles.addEventListener("change", ()=>{
       const n = Array.from(inpFiles.files||[]).filter(f=>/\.pdb$/i.test(f.name)).length;
@@ -171,14 +135,13 @@
     document.getElementById("btnClear").addEventListener("click", ()=>{
       stageT.removeAllComponents(); stageM.removeAllComponents();
       tbody.innerHTML = ""; STORE.clear(); ID_SEQ=0;
-      document.getElementById("matched").textContent="0";
-      document.getElementById("rmsd").textContent="–";
+      document.getElementById("matched").textContent="0"; document.getElementById("rmsd").textContent="–";
       lastPreviewId=null; showError(""); setStatus("Cleared"); updateBulkButton();
     });
     document.getElementById("btnDemo").addEventListener("click", runDemo);
     document.getElementById("btnDownloadAll").addEventListener("click", downloadAllZip);
 
-    // ★ イベント委譲：結果テーブルのボタンを一括ハンドリング
+    // イベント委譲：結果テーブルのボタン
     tbody.addEventListener("click", async (ev)=>{
       const btn = ev.target.closest("button"); if(!btn) return;
       const id = btn.getAttribute("data-id"); if(!id || !STORE.has(id)) return;
@@ -196,16 +159,15 @@
         setStatus("Running...","warn");
         const tmplText = await loadTextFile(inpTemplate.files[0]);
         const atomsT = parsePDB(tmplText);
-        await renderPDB(stageT, tmplText, 0x2196f3);
+        await renderPDB(stageT, tmplText, "#2196f3");
 
         STORE.clear(); ID_SEQ=0; tbody.innerHTML = "";
-
         const files = Array.from(inpFiles.files||[]).filter(f=>/\.pdb$/i.test(f.name));
+
         for(const f of files){
           const text = await loadTextFile(f);
           const atomsM = parsePDB(text);
           const {rmsd, transformed, count} = alignKabschSimple(atomsT, atomsM);
-
           const display = (f.webkitRelativePath && f.webkitRelativePath.length) ? f.webkitRelativePath : f.name;
           const id = "k"+(++ID_SEQ);
           STORE.set(id, {name: display, text: transformed, rmsd, count});
@@ -220,7 +182,6 @@
             </td>`;
           tbody.appendChild(tr);
 
-          // 最初は自動プレビュー
           if (STORE.size === 1){
             await previewId(id);
             document.getElementById("matched").textContent = count;
@@ -229,8 +190,7 @@
         }
         setStatus("Done","good"); updateBulkButton();
       }catch(e){
-        console.error(e);
-        showError("実行時エラー: " + (e && e.message ? e.message : e));
+        console.error(e); showError("実行時エラー: " + (e && e.message ? e.message : e));
       }
     }
 
@@ -240,11 +200,12 @@
         const fr = new FileReader(); fr.onload = ()=>resolve(fr.result); fr.onerror=reject; fr.readAsText(file);
       });
     }
-    function renderPDB(stage, pdbText, color){
+    function renderPDB(stage, pdbText, colorHex){
       stage.removeAllComponents();
       const blob = new Blob([pdbText], {type:"chemical/x-pdb"});
       return stage.loadFile(blob, {ext:"pdb"}).then(o=>{
-        o.addRepresentation("cartoon", {color: color});
+        // ★ colorValue を使い、確実に単色指定（'color' ではなく）
+        o.addRepresentation("cartoon", { colorValue: colorHex });
         o.autoView();
       }).catch(err=>{
         console.error(err);
@@ -253,8 +214,8 @@
     }
 
     async function previewId(id){
-      const item = STORE.get(id); if(!item){ return; }
-      await renderPDB(stageM, item.text, 0xef4444);
+      const item = STORE.get(id); if(!item) return;
+      await renderPDB(stageM, item.text, "#ef4444");
       lastPreviewId = id;
     }
     function downloadId(id){
@@ -306,12 +267,10 @@
     function alignKabschSimple(refAtoms, mobAtoms){
       const n = Math.min(refAtoms.length, mobAtoms.length);
       if(n < 3){
-        // 3点未満の場合は変換しない（元の行をそのまま返す）
         return { rmsd: Number.NaN, transformed: mobAtoms.map(a=>a.line).join("\n"), count: n };
       }
       const P = new Array(n), Q = new Array(n);
       for(let i=0;i<n;i++){ P[i]=[refAtoms[i].x,refAtoms[i].y,refAtoms[i].z]; Q[i]=[mobAtoms[i].x,mobAtoms[i].y,mobAtoms[i].z]; }
-
       const Pc = mean(P), Qc = mean(Q);
       const X = subAll(P, Pc), Y = subAll(Q, Qc);
       const H = mulT(X, Y);
@@ -326,23 +285,19 @@
       for(let i=0;i<mobAtoms.length;i++){
         const a = mobAtoms[i];
         if(i < n){
-          // ★ 座標欄(30–54)だけ 8桁右寄せ・小数3桁で上書き。その他は元の行を完全維持
           const nx = MT[i][0].toFixed(3).toString().padStart(8,' ');
           const ny = MT[i][1].toFixed(3).toString().padStart(8,' ');
           const nz = MT[i][2].toFixed(3).toString().padStart(8,' ');
           let line = a.line;
           line = line.substring(0,30) + nx + ny + nz + line.substring(54);
           out.push(line);
-        } else {
-          // 対応点が無い行は元のまま
-          out.push(a.line);
-        }
+        } else { out.push(a.line); }
       }
       out.push("END");
       return { rmsd:r, transformed: out.join("\n"), count:n };
     }
 
-    /* ===== Math helpers ===== */
+    /* ===== Math helpers & SVD ===== */
     function mean(P){ const n=P.length; return [0,1,2].map(j=>P.reduce((s,p)=>s+p[j],0)/n); }
     function subV(a,b){ return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
     function mv(A,v){ return [A[0][0]*v[0]+A[0][1]*v[1]+A[0][2]*v[2], A[1][0]*v[0]+A[1][1]*v[1]+A[1][2]*v[2], A[2][0]*v[0]+A[2][1]*v[1]+A[2][2]*v[2]]; }
@@ -356,7 +311,6 @@
     function det3(M){ return M[0][0]*(M[1][1]*M[2][2]-M[1][2]*M[2][1]) - M[0][1]*(M[1][0]*M[2][2]-M[1][2]*M[2][0]) + M[0][2]*(M[1][0]*M[2][1]-M[1][1]*M[2][0]); }
     function rms(A,B){ let s=0; for(let i=0;i<A.length;i++){ const dx=A[i][0]-B[i][0], dy=A[i][1]-B[i][1], dz=A[i][2]-B[i][2]; s+=dx*dx+dy*dy+dz*dz; } return Math.sqrt(s/A.length); }
 
-    // SVD (Jacobi)
     function svdJacobi(M){
       function T(A){ return A[0].map((_,i)=>A.map(r=>r[i])); }
       function mul(A,B){ const r=A.length,c=B[0].length,k=B.length; const o=Array.from({length:r},()=>Array(c).fill(0));
@@ -396,7 +350,7 @@
         'END'
       ].join('\n');
 
-      renderPDB(stageT, pdbT, 0x2196f3);
+      renderPDB(stageT, pdbT, "#2196f3");
       const {rmsd, transformed, count} = alignKabschSimple(parsePDB(pdbT), parsePDB(pdbM));
 
       STORE.clear(); ID_SEQ=0;
