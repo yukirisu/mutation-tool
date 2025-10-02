@@ -1,0 +1,11 @@
+python batch_align_stats.py \
+  --template /path/to/template.pdb \
+  --inputs   /path/to/inputs_dir \
+  --out      summary.csv \
+  --strategy resnum \
+  --atom-set bb \
+  --chains-template A,B \
+  --chains-mobile  A,B \
+  --min-pairs 12 \
+  --threads 12 \
+  --save-aligned-dir aligned
