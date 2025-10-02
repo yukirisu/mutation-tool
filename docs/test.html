@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>構造アラインメントビューア</title>
+  <title>構造アラインメントビューア（CA対応・全原子変換）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <!-- NGL.js -->
   <script src="https://cdn.jsdelivr.net/npm/ngl@2.0.0-dev.37/dist/ngl.js"></script>
@@ -43,7 +43,7 @@
   <div class="taskbar">
     <div>
       <span class="brand">StructAlign</span>
-      <span class="muted">— ブラウザ内・構造アラインメント</span>
+      <span class="muted">— CA対応・全原子を剛体変換</span>
       <span id="statusBadge" class="badge">Ready</span>
     </div>
     <div>
@@ -61,8 +61,8 @@
   </div>
 
   <div class="container">
-    <h1>構造アラインメント（配列は不使用）</h1>
-    <p class="desc">テンプレートPDB 1件と複数PDB（ファイル/フォルダ）をローカルで読み込み、Kabsch法で重ね合わせします。データは外部送信されません。</p>
+    <h1>構造アラインメント（配列は不使用／CAで対応付け／全原子変換）</h1>
+    <p class="desc">テンプレートPDB 1件と複数PDB（ファイル/フォルダ）をローカルで読み込み、CA原子で対応付け → 剛体変換を求め、モデル中の全原子に適用します。出力PDBは座標欄のみ上書きし、それ以外は保持します。</p>
 
     <div class="grid">
       <div class="panel">
@@ -78,7 +78,7 @@
     <div class="panel" style="margin-top:16px;">
       <h3 style="margin:0 0 8px;">結果</h3>
       <div class="muted" style="margin-bottom:8px;">
-        <span>マッチ数: <b id="matched">0</b></span>
+        <span>対応CA数: <b id="matched">0</b></span>
         <span style="margin-left:12px;">RMSD (Å): <b id="rmsd">–</b></span>
       </div>
       <div id="err" class="err"></div>
@@ -99,8 +99,6 @@
 
     let ID_SEQ = 0;
     const STORE = new Map(); // id -> {name, text, rmsd, count}
-    let lastPreviewId = null;
-
     function setStatus(text, type=""){ statusBadge.textContent = text; statusBadge.className = "badge " + (type||""); }
     function showError(msg){ document.getElementById("err").textContent = msg || ""; setStatus(msg ? "Error" : "Ready", msg ? "err" : ""); }
     function safeZipPath(name){ return name.replace(/[\\:*?"<>|]/g, "_"); }
@@ -123,7 +121,7 @@
     inpTemplate.addEventListener("change", ()=>{
       if(inpTemplate.files.length){
         setStatus(`Template: ${inpTemplate.files[0].name}`,"good");
-        loadTextFile(inpTemplate.files[0]).then(t=> renderPDB(stageT, t, "#2196f3"));
+        loadTextFile(inpTemplate.files[0]).then(t=> renderPDB(stageT, t, "#1f77b4"));
       } else setStatus("Ready");
     });
     inpFiles.addEventListener("change", ()=>{
@@ -136,12 +134,12 @@
       stageT.removeAllComponents(); stageM.removeAllComponents();
       tbody.innerHTML = ""; STORE.clear(); ID_SEQ=0;
       document.getElementById("matched").textContent="0"; document.getElementById("rmsd").textContent="–";
-      lastPreviewId=null; showError(""); setStatus("Cleared"); updateBulkButton();
+      showError(""); setStatus("Cleared"); updateBulkButton();
     });
     document.getElementById("btnDemo").addEventListener("click", runDemo);
     document.getElementById("btnDownloadAll").addEventListener("click", downloadAllZip);
 
-    // イベント委譲：結果テーブルのボタン
+    // イベント委譲（安全）
     tbody.addEventListener("click", async (ev)=>{
       const btn = ev.target.closest("button"); if(!btn) return;
       const id = btn.getAttribute("data-id"); if(!id || !STORE.has(id)) return;
@@ -158,19 +156,24 @@
 
         setStatus("Running...","warn");
         const tmplText = await loadTextFile(inpTemplate.files[0]);
-        const atomsT = parsePDB(tmplText);
-        await renderPDB(stageT, tmplText, "#2196f3");
+        const atomsT_all = parseAllAtoms(tmplText);
+        const atomsT_CA  = extractCA(atomsT_all);
+        await renderPDB(stageT, tmplText, "#1f77b4");
 
         STORE.clear(); ID_SEQ=0; tbody.innerHTML = "";
-        const files = Array.from(inpFiles.files||[]).filter(f=>/\.pdb$/i.test(f.name));
 
+        const files = Array.from(inpFiles.files||[]).filter(f=>/\.pdb$/i.test(f.name));
         for(const f of files){
           const text = await loadTextFile(f);
-          const atomsM = parsePDB(text);
-          const {rmsd, transformed, count} = alignKabschSimple(atomsT, atomsM);
+          const atomsM_all = parseAllAtoms(text);
+          const atomsM_CA  = extractCA(atomsM_all);
+
+          const result = alignByCA_TransformAll(atomsT_CA, atomsM_CA, atomsM_all);
+          const { rmsd, transformedText, count } = result;
+
           const display = (f.webkitRelativePath && f.webkitRelativePath.length) ? f.webkitRelativePath : f.name;
           const id = "k"+(++ID_SEQ);
-          STORE.set(id, {name: display, text: transformed, rmsd, count});
+          STORE.set(id, {name: display, text: transformedText, rmsd, count});
 
           const tr = document.createElement("tr");
           tr.innerHTML = `
@@ -190,7 +193,8 @@
         }
         setStatus("Done","good"); updateBulkButton();
       }catch(e){
-        console.error(e); showError("実行時エラー: " + (e && e.message ? e.message : e));
+        console.error(e);
+        showError("実行時エラー: " + (e && e.message ? e.message : e));
       }
     }
 
@@ -204,19 +208,16 @@
       stage.removeAllComponents();
       const blob = new Blob([pdbText], {type:"chemical/x-pdb"});
       return stage.loadFile(blob, {ext:"pdb"}).then(o=>{
-        // ★ colorValue を使い、確実に単色指定（'color' ではなく）
         o.addRepresentation("cartoon", { colorValue: colorHex });
         o.autoView();
       }).catch(err=>{
         console.error(err);
-        showError("表示に失敗しました（NGLの読み込みに失敗）");
+        showError("表示に失敗しました（NGL 読み込みエラー）");
       });
     }
-
     async function previewId(id){
       const item = STORE.get(id); if(!item) return;
       await renderPDB(stageM, item.text, "#ef4444");
-      lastPreviewId = id;
     }
     function downloadId(id){
       const item = STORE.get(id); if(!item){ alert("アライン後PDBが見つかりません"); return; }
@@ -246,91 +247,125 @@
     }
 
     /* ===== PDB parsing ===== */
-    function parsePDB(text){
+    function parseAllAtoms(text){
       const atoms=[]; const lines = text.split(/\r?\n/);
-      for(const line of lines){
+      for(let idx=0; idx<lines.length; idx++){
+        const line = lines[idx];
         if(!line) continue;
         if(line.startsWith("ATOM") || line.startsWith("HETATM")){
           const name = line.slice(12,16).trim();
+          const chain= line.slice(21,22);
+          const resno= parseInt(line.slice(22,26),10);
           const x = parseFloat(line.slice(30,38));
           const y = parseFloat(line.slice(38,46));
           const z = parseFloat(line.slice(46,54));
-          atoms.push({ name, x, y, z, line });
+          atoms.push({ name, chain, resno, x, y, z, lineIndex: idx, line });
         }
       }
       return atoms;
     }
-
-    /* ===== Alignment (Kabsch, simple pairing) =====
-       座標欄(30–54桁)のみ上書きし、それ以外は元の行を完全維持
-    */
-    function alignKabschSimple(refAtoms, mobAtoms){
-      const n = Math.min(refAtoms.length, mobAtoms.length);
-      if(n < 3){
-        return { rmsd: Number.NaN, transformed: mobAtoms.map(a=>a.line).join("\n"), count: n };
-      }
-      const P = new Array(n), Q = new Array(n);
-      for(let i=0;i<n;i++){ P[i]=[refAtoms[i].x,refAtoms[i].y,refAtoms[i].z]; Q[i]=[mobAtoms[i].x,mobAtoms[i].y,mobAtoms[i].z]; }
-      const Pc = mean(P), Qc = mean(Q);
-      const X = subAll(P, Pc), Y = subAll(Q, Qc);
-      const H = mulT(X, Y);
-      const {U,S,V} = svdJacobi(H);
-      let R = mul(V, tr(U));
-      if (det3(R) < 0){ V[0][2]*=-1; V[1][2]*=-1; V[2][2]*=-1; R = mul(V, tr(U)); }
-      const t = subV(Qc, mv(R, Pc));
-      const MT = addAll(mulAll(X, R), t);
-      const r = rms(MT, Y);
-
-      const out = [];
-      for(let i=0;i<mobAtoms.length;i++){
-        const a = mobAtoms[i];
-        if(i < n){
-          const nx = MT[i][0].toFixed(3).toString().padStart(8,' ');
-          const ny = MT[i][1].toFixed(3).toString().padStart(8,' ');
-          const nz = MT[i][2].toFixed(3).toString().padStart(8,' ');
-          let line = a.line;
-          line = line.substring(0,30) + nx + ny + nz + line.substring(54);
-          out.push(line);
-        } else { out.push(a.line); }
-      }
-      out.push("END");
-      return { rmsd:r, transformed: out.join("\n"), count:n };
+    function extractCA(atomsAll){
+      // CA のみ（Chain + ResNo を使った対応が取りやすい）
+      return atomsAll.filter(a => a.name === "CA");
     }
 
-    /* ===== Math helpers & SVD ===== */
+    /* ===== Alignment by CA, apply to ALL atoms =====
+       - H = X^T Y （X: template-CA centered, Y: mobile-CA centered）
+       - SVD: H = U S V^T
+       - 回す向き：mobile -> template なので R = U V^T,  t = Pc - R*Qc
+       - これを **全原子** m に m' = R*m + t として適用
+       - 出力は座標欄(30–54桁)のみ上書き、それ以外は元行を保持
+    */
+    function alignByCA_TransformAll(tmplCA, mobCA, mobAll){
+      const n = Math.min(tmplCA.length, mobCA.length);
+      if(n < 3){
+        return { rmsd: Number.NaN, transformedText: mobAll.map(a=>a.line).join("\n"), count: n };
+      }
+      // 対応はインデックス順（高相同性想定）。必要なら chain/resno マッチに変更可。
+      const P = new Array(n); const Q = new Array(n);
+      for(let i=0;i<n;i++){ P[i]=[tmplCA[i].x,tmplCA[i].y,tmplCA[i].z]; Q[i]=[mobCA[i].x,mobCA[i].y,mobCA[i].z]; }
+
+      const Pc = mean(P), Qc = mean(Q);
+      const X = subAll(P, Pc), Y = subAll(Q, Qc);
+      const H = mul(tr(X), Y);                 // 3x3
+      const {U,S,V} = svdFromHtH(H);           // ちゃんと U = H V S^{-1} を求める
+      let R = mul(U, tr(V));                   // ★ mobile -> template
+      if(det3(R) < 0){                         // 反転対策
+        V[0][2]*=-1; V[1][2]*=-1; V[2][2]*=-1;
+        R = mul(U, tr(V));
+      }
+      const t = subV(Pc, mv(R, Qc));           // t = Pc - R*Qc
+
+      // CA RMSD（評価用）
+      const QtoP = addAll(mulAll(Q, R), t);    // R*Q + t
+      const r = rms(QtoP, P);
+
+      // 全原子に適用：m' = R*m + t
+      // mobAll は元の行インデックスを持っているので、その行の座標欄だけ上書きする
+      const lines = mobAll.length ? mobAll[0].line.split(/\r?\n/) : []; // 使わない（安全用）
+      const out = [];
+      for(const a of mobAll){
+        const m = [a.x, a.y, a.z];
+        const m2 = addV(mv(R, m), t);          // 変換後座標
+        const nx = m2[0].toFixed(3).toString().padStart(8,' ');
+        const ny = m2[1].toFixed(3).toString().padStart(8,' ');
+        const nz = m2[2].toFixed(3).toString().padStart(8,' ');
+        let line = a.line;
+        // 30–54 桁のみ差し替え。他は完全維持
+        line = line.substring(0,30) + nx + ny + nz + line.substring(54);
+        out.push(line);
+      }
+      out.push("END");
+      return { rmsd: r, transformedText: out.join("\n"), count: n };
+    }
+
+    /* ===== Linear algebra ===== */
     function mean(P){ const n=P.length; return [0,1,2].map(j=>P.reduce((s,p)=>s+p[j],0)/n); }
     function subV(a,b){ return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
+    function addV(a,b){ return [a[0]+b[0], a[1]+b[1], a[2]+b[2]]; }
     function mv(A,v){ return [A[0][0]*v[0]+A[0][1]*v[1]+A[0][2]*v[2], A[1][0]*v[0]+A[1][1]*v[1]+A[1][2]*v[2], A[2][0]*v[0]+A[2][1]*v[1]+A[2][2]*v[2]]; }
     function subAll(P,c){ return P.map(p=>[p[0]-c[0], p[1]-c[1], p[2]-c[2]]); }
     function addAll(P,c){ return P.map(p=>[p[0]+c[0], p[1]+c[1], p[2]+c[2]]); }
     function tr(A){ return A[0].map((_,i)=>A.map(r=>r[i])); }
     function mul(A,B){ const r=A.length,c=B[0].length,k=B.length; const o=Array.from({length:r},()=>Array(c).fill(0));
       for(let i=0;i<r;i++) for(let j=0;j<c;j++) for(let t=0;t<k;t++) o[i][j]+=A[i][t]*B[t][j]; return o; }
-    function mulT(X,Y){ return mul(tr(X),Y); }
     function mulAll(P,R){ return P.map(v=>[R[0][0]*v[0]+R[0][1]*v[1]+R[0][2]*v[2], R[1][0]*v[0]+R[1][1]*v[1]+R[1][2]*v[2], R[2][0]*v[0]+R[2][1]*v[1]+R[2][2]*v[2]]); }
     function det3(M){ return M[0][0]*(M[1][1]*M[2][2]-M[1][2]*M[2][1]) - M[0][1]*(M[1][0]*M[2][2]-M[1][2]*M[2][0]) + M[0][2]*(M[1][0]*M[2][1]-M[1][1]*M[2][0]); }
     function rms(A,B){ let s=0; for(let i=0;i<A.length;i++){ const dx=A[i][0]-B[i][0], dy=A[i][1]-B[i][1], dz=A[i][2]-B[i][2]; s+=dx*dx+dy*dy+dz*dz; } return Math.sqrt(s/A.length); }
 
-    function svdJacobi(M){
+    // SVD from H^T H: get V,S by Jacobi eigen-decomp of H^T H, then U = H * V * S^{-1}
+    function svdFromHtH(H){
       function T(A){ return A[0].map((_,i)=>A.map(r=>r[i])); }
       function mul(A,B){ const r=A.length,c=B[0].length,k=B.length; const o=Array.from({length:r},()=>Array(c).fill(0));
         for(let i=0;i<r;i++) for(let j=0;j<c;j++) for(let t=0;t<k;t++) o[i][j]+=A[i][t]*B[t][j]; return o; }
-      function ATA(A){ return mul(T(A),A); }
       function I(n){ return Array.from({length:n},(_,i)=>Array.from({length:n},(_,j)=>i===j?1:0)); }
-      let AtA = ATA(M); const N=3; let V = I(N);
-      for(let iter=0; iter<40; iter++){
-        for(let p=0;p<N;p++) for(let q=p+1;q<N;q++){
-          const app=AtA[p][p], aqq=AtA[q][q], apq=AtA[p][q];
-          if(Math.abs(apq) < 1e-12) continue;
-          const phi = 0.5*Math.atan2(2*apq, (aqq-app));
+
+      const AtA = mul(T(H), H);         // 3x3 対称
+      let V = I(3);
+      let Sdiag = [0,0,0];
+      // Jacobi 反復で AtA を対角化 → V が固有ベクトル、固有値=σ^2
+      let A = AtA.map(r=>r.slice());
+      for(let iter=0; iter<50; iter++){
+        let changed=false;
+        for(let p=0;p<3;p++) for(let q=p+1;q<3;q++){
+          const apq=A[p][q]; if(Math.abs(apq)<1e-12) continue;
+          const phi=0.5*Math.atan2(2*apq, A[q][q]-A[p][p]);
           const c=Math.cos(phi), s=Math.sin(phi);
-          for(let k=0;k<N;k++){ const pk=AtA[p][k], qk=AtA[q][k]; AtA[p][k]=c*pk-s*qk; AtA[q][k]=s*pk+c*qk; }
-          for(let k=0;k<N;k++){ const kp=AtA[k][p], kq=AtA[k][q]; AtA[k][p]=c*kp-s*kq; AtA[k][q]=s*kp+c*kq; }
-          for(let k=0;k<N;k++){ const vk=V[k][p], wk=V[k][q]; V[k][p]=c*vk-s*wk; V[k][q]=s*vk+c*wk; }
+          for(let k=0;k<3;k++){ const apk=A[p][k], aqk=A[q][k]; A[p][k]=c*apk-s*aqk; A[q][k]=s*apk+c*aqk; }
+          for(let k=0;k<3;k++){ const akp=A[k][p], akq=A[k][q]; A[k][p]=c*akp-s*akq; A[k][q]=s*akp+c*akq; }
+          for(let k=0;k<3;k++){ const vkp=V[k][p], vkq=V[k][q]; V[k][p]=c*vkp-s*vkq; V[k][q]=s*vkp+c*vkq; }
+          changed=true;
         }
+        if(!changed) break;
       }
-      const S=[Math.sqrt(Math.max(AtA[0][0],0)), Math.sqrt(Math.max(AtA[1][1],0)), Math.sqrt(Math.max(AtA[2][2],0))];
-      const U=I(3); return {U,S,V};
+      Sdiag = [Math.sqrt(Math.max(A[0][0],0)), Math.sqrt(Math.max(A[1][1],0)), Math.sqrt(Math.max(A[2][2],0))];
+
+      // U = H * V * S^{-1}
+      const VinvS = [[V[0][0]/(Sdiag[0]||1e-12), V[0][1]/(Sdiag[1]||1e-12), V[0][2]/(Sdiag[2]||1e-12)],
+                     [V[1][0]/(Sdiag[0]||1e-12), V[1][1]/(Sdiag[1]||1e-12), V[1][2]/(Sdiag[2]||1e-12)],
+                     [V[2][0]/(Sdiag[0]||1e-12), V[2][1]/(Sdiag[1]||1e-12), V[2][2]/(Sdiag[2]||1e-12)]];
+      const U = mul(H, VinvS);
+      return {U, S:Sdiag, V};
     }
 
     /* ===== Demo ===== */
@@ -350,12 +385,16 @@
         'END'
       ].join('\n');
 
-      renderPDB(stageT, pdbT, "#2196f3");
-      const {rmsd, transformed, count} = alignKabschSimple(parsePDB(pdbT), parsePDB(pdbM));
+      renderPDB(stageT, pdbT, "#1f77b4");
+
+      const T_all = parseAllAtoms(pdbT), M_all = parseAllAtoms(pdbM);
+      const T_CA  = extractCA(T_all),      M_CA  = extractCA(M_all);
+
+      const {rmsd, transformedText, count} = alignByCA_TransformAll(T_CA, M_CA, M_all);
 
       STORE.clear(); ID_SEQ=0;
       const id = "k"+(++ID_SEQ);
-      STORE.set(id, {name:"demo_aligned.pdb", text: transformed, rmsd, count});
+      STORE.set(id, {name:"demo_aligned.pdb", text: transformedText, rmsd, count});
       document.getElementById("matched").textContent = count;
       document.getElementById("rmsd").textContent = Number.isFinite(rmsd) ? rmsd.toFixed(3) : "—";
 
