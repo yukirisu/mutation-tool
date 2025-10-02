@@ -31,7 +31,7 @@
           <input type="file" name="pdb_target" accept=".pdb">
         </label>
         <label>アライン対象 PDB
-          <input type="file" name="pdb_mobile" accept=".pdb">
+          <input type="file" name="pdb_mobile" accept=".pdb" multiple>
         </label>
       </div>
       <div class="grid">
@@ -132,6 +132,22 @@
         <b>マッチ数:</b> <span id="matched">0</span>
         <b style="margin-left:1rem">RMSD (Å):</b> <span id="rmsd">–</span>
       </p>
+      <section id="batchSection" style="display:none; margin:.5rem 0 1rem 0">
+        <h5>複数ファイルの結果</h5>
+        <div style="overflow:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>ファイル名</th>
+                <th>マッチ数</th>
+                <th>RMSD (Å)</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="batchTbody"></tbody>
+          </table>
+        </div>
+      </section>
       <div id="err" class="err"></div>
       <div class="grid">
         <div>
@@ -446,13 +462,94 @@ function runAlignWithTexts(targText, mobText, opts){
 
 /******************** UIハンドラ ********************/
 var alignedPDBText='';
+var _alignedMap = {}; // filename -> {text, rmsd, count, previewed:false}
 async function alignSubmit(ev){
   ev.preventDefault(); showError('');
   try{
     var fd = new FormData(document.getElementById('form'));
-    var targetFile = fd.get('pdb_target');
-    var mobileFile = fd.get('pdb_mobile');
-    if(!targetFile || !mobileFile){ showError('PDBファイルを選択してください（または「デモPDBで試す」を押してください）'); return; }
+    var targetInput = document.querySelector('input[name="pdb_target"]');
+    var mobileInput = document.querySelector('input[name="pdb_mobile"]');
+    var targetFile = targetInput && targetInput.files[0];
+    var mobileFiles = mobileInput ? Array.from(mobileInput.files||[]) : [];
+    if(!targetFile || mobileFiles.length===0){ showError('PDBファイル（テンプレート1件＋対象1件以上）を選択してください'); return; }
+
+    var chainT_in = (fd.get('chain_target')||'A').split(',').map(function(s){return s.trim();}).filter(Boolean);
+    var chainM_in = (fd.get('chain_mobile')||'A').split(',').map(function(s){return s.trim();}).filter(Boolean);
+    var mapMode = fd.get('chain_map_mode')||'auto2';
+    var strategy = fd.get('match_strategy')||'resnum';
+    var atomSet  = fd.get('atom_set')||'bb';
+    var minPairs = parseInt(fd.get('min_pairs')||'12');
+
+    var targText = await targetFile.text();
+    // 先にテンプレートを描画
+    document.getElementById('result').style.display = '';
+    renderNGL('stageT', targText, 0x2196f3);
+
+    // テーブル初期化
+    _alignedMap = {}; var tbody=document.getElementById('batchTbody'); tbody.innerHTML='';
+    document.getElementById('batchSection').style.display='';
+
+    // 各ファイルを順次処理
+    for(const f of mobileFiles){
+      const mobText = await f.text();
+      // --- core: run alignment without touching global viewers until preview step ---
+      var atomsT = parsePDB(targText);
+      var atomsM = parsePDB(mobText);
+      var caT = selectChainCA(atomsT, chainT_in);
+      var caM = selectChainCA(atomsM, chainM_in);
+
+      function attempt(chainMap){
+        var res = matchPairs(strategy, caT, caM, atomSet, atomsT, atomsM, chainMap);
+        if(res.count < Math.max(3,minPairs)) return null;
+        var tr = kabsch(res.M, res.T);
+        var MT = new Array(res.M.length);
+        for(var i=0;i<res.M.length;i++){
+          var v=res.M[i]; MT[i] = [ tr.R[0][0]*v[0]+tr.R[0][1]*v[1]+tr.R[0][2]*v[2]+tr.t[0], tr.R[1][0]*v[0]+tr.R[1][1]*v[1]+tr.R[1][2]*v[2]+tr.t[1], tr.R[2][0]*v[0]+tr[2][1]*v[1]+tr[2][2]*v[2]+tr.t[2] ];
+        }
+        var r = rmsd(MT, res.T);
+        return {R:tr.R,t:tr.t,count:res.count,rmsd:r};
+      }
+
+      // チェーン対応の探索
+      var chainMapFinal=null, best=null;
+      if(mapMode==='auto2' && chainT_in.length===2 && chainM_in.length===2){
+        var maps = [ [[chainT_in[0], chainM_in[0]],[chainT_in[1], chainM_in[1]]], [[chainT_in[0], chainM_in[1]],[chainT_in[1], chainM_in[0]]] ];
+        for(const m of maps){ var rs = attempt(m); if(rs && (!best || rs.rmsd<best.rmsd)){ best=rs; chainMapFinal=m; } }
+      }else{
+        var zipped=[]; for(var zi=0; zi<Math.min(chainT_in.length, chainM_in.length); zi++){ zipped.push([chainT_in[zi], chainM_in[zi]]); }
+        chainMapFinal = zipped.length? zipped : [[chainT_in[0], chainM_in[0]]];
+        best = attempt(chainMapFinal);
+      }
+
+      if(best){
+        var aligned = transformPDB(atomsM, best.R, best.t);
+        _alignedMap[f.name] = { text: aligned, rmsd: best.rmsd, count: best.count };
+        // 表に行を追加
+        var trEl=document.createElement('tr');
+        trEl.innerHTML = `<td>${f.name}</td><td>${best.count}</td><td>${best.rmsd.toFixed(3)}</td>
+          <td>
+            <button type="button" class="secondary btnShow">表示</button>
+            <button type="button" class="secondary btnDL">DL</button>
+          </td>`;
+        trEl.querySelector('.btnShow').addEventListener('click', function(){
+          renderNGL('stageM', aligned, 0xff7043);
+          document.getElementById('matched').textContent = best.count;
+          document.getElementById('rmsd').textContent = best.rmsd.toFixed(3);
+          alignedPDBText = aligned;
+        });
+        trEl.querySelector('.btnDL').addEventListener('click', function(){
+          var blob = new Blob([aligned], {type:'chemical/x-pdb'});
+          var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = f.name.replace(/\.pdb$/i,'') + '_aligned.pdb'; a.click(); URL.revokeObjectURL(a.href);
+        });
+        tbody.appendChild(trEl);
+        // 最初の1件は自動プレビュー
+        if(Object.keys(_alignedMap).length===1){ trEl.querySelector('.btnShow').click(); }
+      } else {
+        var trEl=document.createElement('tr'); trEl.innerHTML = `<td>${f.name}</td><td colspan="3" class="err">対応マッチ数が不足またはチェーン対応が不正</td>`; tbody.appendChild(trEl);
+      }
+    }
+  }catch(e){ console.error(e); showError('実行時エラー: '+ (e && e.message? e.message: e)); }
+}
     var chainT_in = (fd.get('chain_target')||'A').split(',').map(function(s){return s.trim();}).filter(function(x){return !!x;});
     var chainM_in = (fd.get('chain_mobile')||'A').split(',').map(function(s){return s.trim();}).filter(function(x){return !!x;});
     var ok = await targetFile.text().then(function(targText){
