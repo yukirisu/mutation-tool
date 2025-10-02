@@ -10,70 +10,43 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <style>
     :root{
-      --bg:#ffffff;
-      --fg:#111111;
-      --muted:#6b7280;
-      --accent:#2563eb;
-      --accent2:#ef4444;
-      --border:#e5e7eb;
-      --card:#fafafa;
+      --bg:#ffffff; --fg:#111111; --muted:#6b7280;
+      --accent:#2563eb; --border:#e5e7eb;
     }
-    *{ box-sizing: border-box; }
+    *{ box-sizing:border-box; }
     html,body{ height:100%; }
-    body{
-      margin:0; background:var(--bg); color:var(--fg);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans",
-        "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji", sans-serif;
-    }
+    body{ margin:0; background:var(--bg); color:var(--fg);
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans",sans-serif; }
 
     /* Taskbar */
-    .taskbar{
-      position:sticky; top:0; z-index:50; width:100%;
-      background: var(--bg); border-bottom:1px solid var(--border);
-      padding: 8px 12px; display:flex; gap:8px; align-items:center; justify-content:space-between;
-    }
-    .taskbar .left, .taskbar .right{ display:flex; gap:8px; align-items:center; }
-    .brand{ font-weight:700; letter-spacing:.3px; }
+    .taskbar{ position:sticky; top:0; z-index:50; background:var(--bg);
+      border-bottom:1px solid var(--border); padding:8px 12px;
+      display:flex; align-items:center; justify-content:space-between; gap:8px;}
+    .brand{ font-weight:700; }
     .muted{ color:var(--muted); }
-    .btn{
-      display:inline-flex; align-items:center; gap:6px;
+    .btn{ display:inline-flex; align-items:center; gap:6px;
       border:1px solid var(--border); background:#fff; color:#111;
-      border-radius:8px; padding:8px 12px; cursor:pointer; font-weight:600;
-    }
+      border-radius:8px; padding:8px 12px; cursor:pointer; font-weight:600; }
     .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
-    .btn.ghost{ background:transparent; }
     .btn:disabled{ opacity:.5; cursor:not-allowed; }
-    .sep{ width:1px; height:28px; background:var(--border); margin:0 4px; }
-    .switch{
-      display:inline-flex; align-items:center; gap:6px; font-size:14px; color:var(--muted);
-      padding:4px 8px; border-radius:8px; border:1px dashed var(--border); background:#fff;
-    }
-    .badge{
-      display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid var(--border);
-      background:#fff; font-size:12px; color:#111;
-    }
-    .badge.good{ border-color:#10b981; }
-    .badge.warn{ border-color:#f59e0b; }
+    .switch{ display:inline-flex; align-items:center; gap:6px; color:var(--muted);
+      padding:4px 8px; border-radius:8px; border:1px dashed var(--border); background:#fff; }
+    .badge{ display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid var(--border); background:#fff; font-size:12px; }
+    .badge.good{ border-color:#10b981; } .badge.warn{ border-color:#f59e0b; }
     .badge.err{ border-color:#ef4444; color:#b91c1c; }
+    .sep{ width:1px; height:28px; background:var(--border); margin:0 4px; }
 
-    /* Main layout */
     .container{ max-width:1200px; margin:16px auto; padding:0 16px 48px; }
     h1{ font-size:20px; margin:16px 0 8px; }
     p.desc{ margin:0 0 12px; color:var(--muted); }
-    .grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:start; }
+    .grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
     @media (max-width: 960px){ .grid{ grid-template-columns: 1fr; } }
-
     .panel{ background:#fff; border:1px solid var(--border); border-radius:12px; padding:12px; }
     .stage{ width:100%; height:520px; border:1px solid var(--border); border-radius:12px; background:#fff; }
-
-    /* Results */
     table{ width:100%; border-collapse:collapse; font-size:14px; }
-    th, td{ border:1px solid var(--border); padding:8px 10px; text-align:left; }
+    th,td{ border:1px solid var(--border); padding:8px 10px; text-align:left; }
     tr:hover{ background:#f9fafb; }
-    .right-actions{ display:flex; gap:8px; }
     .err{ color:#b00020; font-weight:600; margin-top:6px; }
-
-    /* hidden inputs */
     input[type="file"]{ display:none; }
   </style>
 </head>
@@ -81,13 +54,13 @@
 
   <!-- Taskbar -->
   <div class="taskbar">
-    <div class="left">
+    <div>
       <span class="brand">StructAlign</span>
       <span class="muted">— ブラウザ内・構造アラインメント</span>
       <span id="statusBadge" class="badge">Ready</span>
     </div>
-    <div class="right">
-      <!-- hidden inputs -->
+    <div>
+      <!-- hidden file inputs -->
       <input type="file" id="pdb_template" accept=".pdb" />
       <input type="file" id="pdb_files" accept=".pdb" multiple />
 
@@ -102,8 +75,8 @@
       <span class="sep"></span>
       <button class="btn primary" id="btnRun">アラインメント実行</button>
       <button class="btn" id="btnDownloadAll" disabled>一括DL (ZIP)</button>
-      <button class="btn ghost" id="btnDemo">デモ</button>
-      <button class="btn ghost" id="btnClear">表示クリア</button>
+      <button class="btn" id="btnDemo">デモ</button>
+      <button class="btn" id="btnClear">表示クリア</button>
     </div>
   </div>
 
@@ -135,11 +108,7 @@
       <div style="overflow:auto;">
         <table>
           <thead>
-            <tr>
-              <th>ファイル</th>
-              <th>RMSD(Å)</th>
-              <th>操作</th>
-            </tr>
+            <tr><th>ファイル</th><th>RMSD(Å)</th><th>操作</th></tr>
           </thead>
           <tbody id="resultsBody"></tbody>
         </table>
@@ -153,9 +122,10 @@
     const stageM = new NGL.Stage("stageM", { backgroundColor: "#ffffff" });
     const statusBadge = document.getElementById("statusBadge");
 
-    // アライン後PDB（表示名 -> テキスト）
-    const ALIGNED_MAP = new Map();
-    let alignedPDBText = "";
+    // IDで管理（ファイル名の記号混入・日本語でも安全）
+    let ID_SEQ = 0;
+    const STORE = new Map(); // id -> {name, text, rmsd, count}
+    let lastPreviewId = null;
 
     function setStatus(text, type=""){
       statusBadge.textContent = text;
@@ -163,122 +133,111 @@
     }
     function showError(msg){
       document.getElementById("err").textContent = msg || "";
-      if(msg){ setStatus("Error", "err"); } else { setStatus("Ready"); }
+      setStatus(msg ? "Error" : "Ready", msg ? "err" : "");
     }
-    function safePathForZip(name){
-      // ZIP内パスとして使えるよう、Windows禁止文字を除去
-      return name.replace(/[\\:*?"<>|]/g, "_");
-    }
-    function safeFileName(name){
-      return name.replace(/[\\/:*?"<>|]/g, "_");
-    }
+    function safeZipPath(name){ return name.replace(/[\\:*?"<>|]/g, "_"); }
+    function safeFileName(name){ return name.replace(/[\\/:*?"<>|]/g, "_"); }
     function updateBulkButton(){
-      const btn = document.getElementById("btnDownloadAll");
-      btn.disabled = (ALIGNED_MAP.size === 0);
+      document.getElementById("btnDownloadAll").disabled = (STORE.size === 0);
     }
 
     /* ===== File pickers on Taskbar ===== */
     const inpTemplate = document.getElementById("pdb_template");
     const inpFiles    = document.getElementById("pdb_files");
     const chkFolder   = document.getElementById("folderMode");
+    const tbody       = document.getElementById("resultsBody");
 
     document.getElementById("btnPickTemplate").addEventListener("click", ()=> inpTemplate.click());
     document.getElementById("btnPickInputs").addEventListener("click", ()=> inpFiles.click());
 
     chkFolder.addEventListener("change", ()=>{
-      if(chkFolder.checked){
-        inpFiles.setAttribute("webkitdirectory", "");
-        inpFiles.removeAttribute("multiple");
-      }else{
-        inpFiles.removeAttribute("webkitdirectory");
-        inpFiles.setAttribute("multiple", "");
-      }
+      if(chkFolder.checked){ inpFiles.setAttribute("webkitdirectory",""); inpFiles.removeAttribute("multiple"); }
+      else{ inpFiles.removeAttribute("webkitdirectory"); inpFiles.setAttribute("multiple",""); }
       inpFiles.value = "";
     });
 
     inpTemplate.addEventListener("change", ()=>{
-      setStatus(inpTemplate.files.length ? `Template: ${inpTemplate.files[0].name}` : "Ready", "good");
       if(inpTemplate.files.length){
-        loadTextFile(inpTemplate.files[0]).then(text=> renderPDB(stageT, text, 0x2196f3));
-      }
+        setStatus(`Template: ${inpTemplate.files[0].name}`,"good");
+        loadTextFile(inpTemplate.files[0]).then(t=> renderPDB(stageT, t, 0x2196f3));
+      }else setStatus("Ready");
     });
     inpFiles.addEventListener("change", ()=>{
       const n = Array.from(inpFiles.files||[]).filter(f=>/\.pdb$/i.test(f.name)).length;
-      setStatus(n>0 ? `Targets: ${n} files` : "Ready", n>0?"good":"");
+      setStatus(n>0?`Targets: ${n} files`:"Ready", n>0?"good":"");
     });
 
     document.getElementById("btnRun").addEventListener("click", alignSubmit);
     document.getElementById("btnClear").addEventListener("click", ()=>{
       stageT.removeAllComponents(); stageM.removeAllComponents();
-      document.getElementById("resultsBody").innerHTML = "";
-      document.getElementById("matched").textContent = "0";
-      document.getElementById("rmsd").textContent = "–";
-      ALIGNED_MAP.clear();
-      alignedPDBText = "";
-      showError(""); setStatus("Cleared");
-      updateBulkButton();
+      tbody.innerHTML = ""; STORE.clear(); ID_SEQ=0;
+      document.getElementById("matched").textContent="0";
+      document.getElementById("rmsd").textContent="–";
+      lastPreviewId=null; showError(""); setStatus("Cleared"); updateBulkButton();
     });
     document.getElementById("btnDemo").addEventListener("click", runDemo);
     document.getElementById("btnDownloadAll").addEventListener("click", downloadAllZip);
+
+    // ★ イベント委譲：結果テーブルのボタンを一括ハンドリング
+    tbody.addEventListener("click", async (ev)=>{
+      const btn = ev.target.closest("button"); if(!btn) return;
+      const id = btn.getAttribute("data-id"); if(!id || !STORE.has(id)) return;
+      if(btn.classList.contains("btn-show")){ await previewId(id); }
+      if(btn.classList.contains("btn-dl"))  { downloadId(id); }
+    });
 
     /* ===== Core: Alignment ===== */
     async function alignSubmit(){
       try{
         showError("");
         if(!inpTemplate.files.length){ showError("テンプレートPDBを選択してください"); return; }
-        if(!inpFiles.files.length){ showError("アライン対象のPDB（ファイルまたはフォルダ）を選択してください"); return; }
+        if(!inpFiles.files.length){ showError("アライン対象（ファイル/フォルダ）を選択してください"); return; }
 
-        setStatus("Running...", "warn");
+        setStatus("Running...","warn");
         const tmplText = await loadTextFile(inpTemplate.files[0]);
         const atomsT = parsePDB(tmplText);
-        renderPDB(stageT, tmplText, 0x2196f3);
+        await renderPDB(stageT, tmplText, 0x2196f3);
 
-        ALIGNED_MAP.clear();
-        const tbody = document.getElementById("resultsBody");
-        tbody.innerHTML = "";
+        STORE.clear(); ID_SEQ=0; tbody.innerHTML = "";
 
         const files = Array.from(inpFiles.files||[]).filter(f=>/\.pdb$/i.test(f.name));
-
         for(const f of files){
           const text = await loadTextFile(f);
           const atomsM = parsePDB(text);
           const {rmsd, transformed, count} = alignKabschSimple(atomsT, atomsM);
 
           const display = (f.webkitRelativePath && f.webkitRelativePath.length) ? f.webkitRelativePath : f.name;
-          ALIGNED_MAP.set(display, transformed);
+          const id = "k"+(++ID_SEQ);
+          STORE.set(id, {name: display, text: transformed, rmsd, count});
 
           const tr = document.createElement("tr");
           tr.innerHTML = `
             <td>${display}</td>
             <td>${Number.isFinite(rmsd) ? rmsd.toFixed(3) : "—"}</td>
-            <td class="right-actions">
-              <button class="btn" type="button" onclick="downloadAligned('${encodeURIComponent(display)}')">DL</button>
-              <button class="btn" type="button" onclick="previewAligned('${encodeURIComponent(display)}')">表示</button>
+            <td style="display:flex; gap:8px;">
+              <button class="btn btn-dl"   type="button" data-id="${id}">DL</button>
+              <button class="btn btn-show" type="button" data-id="${id}">表示</button>
             </td>`;
           tbody.appendChild(tr);
 
-          if (ALIGNED_MAP.size === 1){
-            await previewAligned(encodeURIComponent(display));
+          // 最初は自動プレビュー
+          if (STORE.size === 1){
+            await previewId(id);
             document.getElementById("matched").textContent = count;
             document.getElementById("rmsd").textContent = Number.isFinite(rmsd) ? rmsd.toFixed(3) : "—";
           }
         }
-
-        setStatus("Done", "good");
-        updateBulkButton();
+        setStatus("Done","good"); updateBulkButton();
       }catch(e){
         console.error(e);
         showError("実行時エラー: " + (e && e.message ? e.message : e));
       }
     }
 
-    /* ===== File & Viewer helpers ===== */
+    /* ===== File & Viewer ===== */
     function loadTextFile(file){
       return new Promise((resolve,reject)=>{
-        const fr = new FileReader();
-        fr.onload = ()=> resolve(fr.result);
-        fr.onerror = reject;
-        fr.readAsText(file);
+        const fr = new FileReader(); fr.onload = ()=>resolve(fr.result); fr.onerror=reject; fr.readAsText(file);
       });
     }
     function renderPDB(stage, pdbText, color){
@@ -287,56 +246,45 @@
       return stage.loadFile(blob, {ext:"pdb"}).then(o=>{
         o.addRepresentation("cartoon", {color: color});
         o.autoView();
+      }).catch(err=>{
+        console.error(err);
+        showError("表示に失敗しました（NGLの読み込みに失敗）");
       });
     }
 
-    // 個別DL
-    function downloadAligned(encodedName){
-      const name = decodeURIComponent(encodedName);
-      const text = ALIGNED_MAP.get(name);
-      if(!text){ alert("アライン後PDBが見つかりません"); return; }
-      const blob = new Blob([text], {type:"chemical/x-pdb"});
+    async function previewId(id){
+      const item = STORE.get(id); if(!item){ return; }
+      await renderPDB(stageM, item.text, 0xef4444);
+      lastPreviewId = id;
+    }
+    function downloadId(id){
+      const item = STORE.get(id); if(!item){ alert("アライン後PDBが見つかりません"); return; }
+      const blob = new Blob([item.text], {type:"chemical/x-pdb"});
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      const base = safeFileName(name.endsWith(".pdb") ? name.slice(0,-4) : name);
+      const base = safeFileName(item.name.endsWith(".pdb") ? item.name.slice(0,-4) : item.name);
       a.download = `${base}_aligned.pdb`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(a.href);
     }
-
-    // 一括DL（ZIP）
     async function downloadAllZip(){
-      if(ALIGNED_MAP.size === 0){ alert("ダウンロード対象がありません"); return; }
-      setStatus("Zipping...", "warn");
+      if(STORE.size===0){ alert("ダウンロード対象がありません"); return; }
+      setStatus("Zipping...","warn");
       const zip = new JSZip();
-      for(const [name, text] of ALIGNED_MAP.entries()){
-        // フォルダ選択時の相対パスを極力維持（不正文字のみ置換）
-        const pathInZip = safePathForZip(name.endsWith(".pdb") ? name.slice(0,-4) : name) + "_aligned.pdb";
-        zip.file(pathInZip, text);
+      for(const [,item] of STORE){
+        const pathInZip = safeZipPath(item.name.endsWith(".pdb") ? item.name.slice(0,-4) : item.name) + "_aligned.pdb";
+        zip.file(pathInZip, item.text);
       }
       const blob = await zip.generateAsync({type:"blob"});
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = "aligned_structures.zip";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(a.href);
-      setStatus("ZIP Ready", "good");
+      setStatus("ZIP Ready","good");
     }
 
-    // プレビュー
-    async function previewAligned(encodedName){
-      const name = decodeURIComponent(encodedName);
-      const text = ALIGNED_MAP.get(name);
-      if(!text){ alert("アライン後PDBが見つかりません"); return; }
-      await renderPDB(stageM, text, 0xef4444);
-      alignedPDBText = text;
-    }
-
-    /* ===== PDB parsing (lightweight) ===== */
+    /* ===== PDB parsing ===== */
     function parsePDB(text){
       const atoms=[]; const lines = text.split(/\r?\n/);
       for(const line of lines){
@@ -353,99 +301,82 @@
     }
 
     /* ===== Alignment (Kabsch, simple pairing) =====
-       - 構造のみ、配列は使わない
-       - 可視化用途として先頭N原子を1:1対応
+       座標欄(30–54桁)のみ上書きし、それ以外は元の行を完全維持
     */
     function alignKabschSimple(refAtoms, mobAtoms){
       const n = Math.min(refAtoms.length, mobAtoms.length);
       if(n < 3){
+        // 3点未満の場合は変換しない（元の行をそのまま返す）
         return { rmsd: Number.NaN, transformed: mobAtoms.map(a=>a.line).join("\n"), count: n };
       }
-      const P = new Array(n); const Q = new Array(n);
+      const P = new Array(n), Q = new Array(n);
       for(let i=0;i<n;i++){ P[i]=[refAtoms[i].x,refAtoms[i].y,refAtoms[i].z]; Q[i]=[mobAtoms[i].x,mobAtoms[i].y,mobAtoms[i].z]; }
 
-      const Pc = meanVec(P), Qc = meanVec(Q);
+      const Pc = mean(P), Qc = mean(Q);
       const X = subAll(P, Pc), Y = subAll(Q, Qc);
-      const H = matMul(transpose(X), Y);
-      const {U, S, V} = svdJacobi(H);
-      let R = matMul(V, transpose(U));
-      if (det3(R) < 0){ V[0][2]*=-1; V[1][2]*=-1; V[2][2]*=-1; R = matMul(V, transpose(U)); }
-      const t = subVec(Qc, matVec(R, Pc));
-      const MT = addAll(matMulAll(X, R), t);
-      const r = rmsd(MT, Y);
+      const H = mulT(X, Y);
+      const {U,S,V} = svdJacobi(H);
+      let R = mul(V, tr(U));
+      if (det3(R) < 0){ V[0][2]*=-1; V[1][2]*=-1; V[2][2]*=-1; R = mul(V, tr(U)); }
+      const t = subV(Qc, mv(R, Pc));
+      const MT = addAll(mulAll(X, R), t);
+      const r = rms(MT, Y);
 
       const out = [];
       for(let i=0;i<mobAtoms.length;i++){
         const a = mobAtoms[i];
         if(i < n){
-          const xx = fmt8(MT[i][0]), yy = fmt8(MT[i][1]), zz = fmt8(MT[i][2]);
+          // ★ 座標欄(30–54)だけ 8桁右寄せ・小数3桁で上書き。その他は元の行を完全維持
+          const nx = MT[i][0].toFixed(3).toString().padStart(8,' ');
+          const ny = MT[i][1].toFixed(3).toString().padStart(8,' ');
+          const nz = MT[i][2].toFixed(3).toString().padStart(8,' ');
           let line = a.line;
-          line = line.substring(0,30) + xx + yy + zz + line.substring(54);
+          line = line.substring(0,30) + nx + ny + nz + line.substring(54);
           out.push(line);
         } else {
+          // 対応点が無い行は元のまま
           out.push(a.line);
         }
       }
       out.push("END");
-      return { rmsd: r, transformed: out.join("\n"), count: n };
+      return { rmsd:r, transformed: out.join("\n"), count:n };
     }
 
     /* ===== Math helpers ===== */
-    function meanVec(P){ const n=P.length; return [0,1,2].map(j=>P.reduce((s,p)=>s+p[j],0)/n); }
-    function subVec(a,b){ return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
-    function matVec(A,v){ return [A[0][0]*v[0]+A[0][1]*v[1]+A[0][2]*v[2], A[1][0]*v[0]+A[1][1]*v[1]+A[1][2]*v[2], A[2][0]*v[0]+A[2][1]*v[1]+A[2][2]*v[2]]; }
+    function mean(P){ const n=P.length; return [0,1,2].map(j=>P.reduce((s,p)=>s+p[j],0)/n); }
+    function subV(a,b){ return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
+    function mv(A,v){ return [A[0][0]*v[0]+A[0][1]*v[1]+A[0][2]*v[2], A[1][0]*v[0]+A[1][1]*v[1]+A[1][2]*v[2], A[2][0]*v[0]+A[2][1]*v[1]+A[2][2]*v[2]]; }
     function subAll(P,c){ return P.map(p=>[p[0]-c[0], p[1]-c[1], p[2]-c[2]]); }
     function addAll(P,c){ return P.map(p=>[p[0]+c[0], p[1]+c[1], p[2]+c[2]]); }
-    function transpose(A){ return A[0].map((_,i)=>A.map(r=>r[i])); }
-    function matMul(A,B){
-      const r=A.length, c=B[0].length, k=B.length;
-      const out = Array.from({length:r},()=>Array(c).fill(0));
-      for(let i=0;i<r;i++) for(let j=0;j<c;j++) for(let t=0;t<k;t++) out[i][j]+=A[i][t]*B[t][j];
-      return out;
-    }
-    function matMulAll(P,R){
-      return P.map(v=>[R[0][0]*v[0]+R[0][1]*v[1]+R[0][2]*v[2],
-                       R[1][0]*v[0]+R[1][1]*v[1]+R[1][2]*v[2],
-                       R[2][0]*v[0]+R[2][1]*v[1]+R[2][2]*v[2]]);
-    }
+    function tr(A){ return A[0].map((_,i)=>A.map(r=>r[i])); }
+    function mul(A,B){ const r=A.length,c=B[0].length,k=B.length; const o=Array.from({length:r},()=>Array(c).fill(0));
+      for(let i=0;i<r;i++) for(let j=0;j<c;j++) for(let t=0;t<k;t++) o[i][j]+=A[i][t]*B[t][j]; return o; }
+    function mulT(X,Y){ return mul(tr(X),Y); }
+    function mulAll(P,R){ return P.map(v=>[R[0][0]*v[0]+R[0][1]*v[1]+R[0][2]*v[2], R[1][0]*v[0]+R[1][1]*v[1]+R[1][2]*v[2], R[2][0]*v[0]+R[2][1]*v[1]+R[2][2]*v[2]]); }
     function det3(M){ return M[0][0]*(M[1][1]*M[2][2]-M[1][2]*M[2][1]) - M[0][1]*(M[1][0]*M[2][2]-M[1][2]*M[2][0]) + M[0][2]*(M[1][0]*M[2][1]-M[1][1]*M[2][0]); }
-    function rmsd(A,B){
-      let s=0; for(let i=0;i<A.length;i++){ const dx=A[i][0]-B[i][0], dy=A[i][1]-B[i][1], dz=A[i][2]-B[i][2]; s+=dx*dx+dy*dy+dz*dz; }
-      return Math.sqrt(s/A.length);
-    }
-    function fmt8(v){ return v.toFixed(3).toString().padStart(8,' '); }
+    function rms(A,B){ let s=0; for(let i=0;i<A.length;i++){ const dx=A[i][0]-B[i][0], dy=A[i][1]-B[i][1], dz=A[i][2]-B[i][2]; s+=dx*dx+dy*dy+dz*dz; } return Math.sqrt(s/A.length); }
 
-    // 簡易SVD（Jacobi）
+    // SVD (Jacobi)
     function svdJacobi(M){
-      function transpose(A){ return A[0].map((_,i)=>A.map(r=>r[i])); }
-      function matMul(A,B){
-        const r=A.length, c=B[0].length, k=B.length;
-        const out = Array.from({length:r},()=>Array(c).fill(0));
-        for(let i=0;i<r;i++) for(let j=0;j<c;j++) for(let t=0;t<k;t++) out[i][j]+=A[i][t]*B[t][j];
-        return out;
-      }
-      function ATA(A){ return matMul(transpose(A),A); }
-      function identity(n){ return Array.from({length:n},(_,i)=>Array.from({length:n},(_,j)=>i===j?1:0)); }
-
-      let AtA = ATA(M); const N = 3; let V = identity(N);
+      function T(A){ return A[0].map((_,i)=>A.map(r=>r[i])); }
+      function mul(A,B){ const r=A.length,c=B[0].length,k=B.length; const o=Array.from({length:r},()=>Array(c).fill(0));
+        for(let i=0;i<r;i++) for(let j=0;j<c;j++) for(let t=0;t<k;t++) o[i][j]+=A[i][t]*B[t][j]; return o; }
+      function ATA(A){ return mul(T(A),A); }
+      function I(n){ return Array.from({length:n},(_,i)=>Array.from({length:n},(_,j)=>i===j?1:0)); }
+      let AtA = ATA(M); const N=3; let V = I(N);
       for(let iter=0; iter<40; iter++){
-        for(let p=0;p<N;p++){
-          for(let q=p+1;q<N;q++){
-            const app=AtA[p][p], aqq=AtA[q][q], apq=AtA[p][q];
-            if(Math.abs(apq) < 1e-12) continue;
-            const phi = 0.5 * Math.atan2(2*apq, (aqq-app));
-            const c=Math.cos(phi), s=Math.sin(phi);
-            for(let k=0;k<N;k++){ const pk=AtA[p][k], qk=AtA[q][k]; AtA[p][k]=c*pk-s*qk; AtA[q][k]=s*pk+c*qk; }
-            for(let k=0;k<N;k++){ const kp=AtA[k][p], kq=AtA[k][q]; AtA[k][p]=c*kp-s*kq; AtA[k][q]=s*kp+c*kq; }
-            for(let k=0;k<N;k++){ const vk=V[k][p], wk=V[k][q]; V[k][p]=c*vk-s*wk; V[k][q]=s*vk+c*wk; }
-          }
+        for(let p=0;p<N;p++) for(let q=p+1;q<N;q++){
+          const app=AtA[p][p], aqq=AtA[q][q], apq=AtA[p][q];
+          if(Math.abs(apq) < 1e-12) continue;
+          const phi = 0.5*Math.atan2(2*apq, (aqq-app));
+          const c=Math.cos(phi), s=Math.sin(phi);
+          for(let k=0;k<N;k++){ const pk=AtA[p][k], qk=AtA[q][k]; AtA[p][k]=c*pk-s*qk; AtA[q][k]=s*pk+c*qk; }
+          for(let k=0;k<N;k++){ const kp=AtA[k][p], kq=AtA[k][q]; AtA[k][p]=c*kp-s*kq; AtA[k][q]=s*kp+c*kq; }
+          for(let k=0;k<N;k++){ const vk=V[k][p], wk=V[k][q]; V[k][p]=c*vk-s*wk; V[k][q]=s*vk+c*wk; }
         }
       }
-      const S = [ Math.sqrt(Math.max(AtA[0][0],0)),
-                  Math.sqrt(Math.max(AtA[1][1],0)),
-                  Math.sqrt(Math.max(AtA[2][2],0)) ];
-      const U = identity(3);
-      return {U, S, V};
+      const S=[Math.sqrt(Math.max(AtA[0][0],0)), Math.sqrt(Math.max(AtA[1][1],0)), Math.sqrt(Math.max(AtA[2][2],0))];
+      const U=I(3); return {U,S,V};
     }
 
     /* ===== Demo ===== */
@@ -467,25 +398,25 @@
 
       renderPDB(stageT, pdbT, 0x2196f3);
       const {rmsd, transformed, count} = alignKabschSimple(parsePDB(pdbT), parsePDB(pdbM));
-      ALIGNED_MAP.clear();
-      ALIGNED_MAP.set("demo_aligned.pdb", transformed);
+
+      STORE.clear(); ID_SEQ=0;
+      const id = "k"+(++ID_SEQ);
+      STORE.set(id, {name:"demo_aligned.pdb", text: transformed, rmsd, count});
       document.getElementById("matched").textContent = count;
       document.getElementById("rmsd").textContent = Number.isFinite(rmsd) ? rmsd.toFixed(3) : "—";
 
-      previewAligned(encodeURIComponent("demo_aligned.pdb"));
-
-      const tbody = document.getElementById("resultsBody");
-      tbody.innerHTML = `
+      document.getElementById("resultsBody").innerHTML = `
         <tr>
           <td>demo_aligned.pdb</td>
           <td>${Number.isFinite(rmsd) ? rmsd.toFixed(3) : "—"}</td>
-          <td class="right-actions">
-            <button class="btn" onclick="downloadAligned('${encodeURIComponent("demo_aligned.pdb")}')">DL</button>
-            <button class="btn" onclick="previewAligned('${encodeURIComponent("demo_aligned.pdb")}')">表示</button>
+          <td style="display:flex; gap:8px;">
+            <button class="btn btn-dl"   data-id="${id}">DL</button>
+            <button class="btn btn-show" data-id="${id}">表示</button>
           </td>
         </tr>`;
-      setStatus("Demo loaded", "good");
       updateBulkButton();
+      previewId(id);
+      setStatus("Demo loaded","good");
     }
   </script>
 </body>
