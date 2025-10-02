@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>構造アラインメントビューア</title>
+  <script src="https://cdn.jsdelivr.net/npm/ngl@2.0.0-dev.37/dist/ngl.js"></script>
+  <style>
+    body {
+      background-color: white;
+      color: black;
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 { font-size: 1.5em; margin-bottom: 10px; }
+    #viewport { width: 100%; height: 500px; margin-top: 15px; border: 1px solid #ccc; }
+    .file-input { margin: 10px 0; }
+    button { margin-top: 10px; padding: 5px 10px; }
+    table { margin-top: 20px; border-collapse: collapse; width: 100%; }
+    table, th, td { border: 1px solid #ccc; }
+    th, td { padding: 5px; text-align: left; }
+    .result-row:hover { background-color: #f5f5f5; }
+  </style>
+</head>
+<body>
+  <h1>構造アラインメントビューア</h1>
+
+  <form id="form" onsubmit="return false;">
+    <div class="file-input">
+      <label>テンプレートPDBファイル:</label>
+      <input type="file" id="pdb_template" accept=".pdb" required>
+    </div>
+    <div class="file-input">
+      <label>アライン対象PDBファイル群:</label>
+      <input type="file" id="pdb_files" accept=".pdb" multiple>
+      <label><input type="checkbox" id="folderMode"> フォルダを選ぶ</label>
+    </div>
+    <button type="button" onclick="alignSubmit(event)">アラインメント実行</button>
+  </form>
+
+  <div id="viewport"></div>
+  <div id="results"></div>
+
+  <script>
+    const stage = new NGL.Stage("viewport", { backgroundColor: "white" });
+
+    // フォルダ選択切り替え
+    document.getElementById("folderMode").addEventListener("change", e => {
+      const input = document.getElementById("pdb_files");
+      if (e.target.checked) {
+        input.setAttribute("webkitdirectory", "");
+        input.removeAttribute("multiple");
+      } else {
+        input.removeAttribute("webkitdirectory");
+        input.setAttribute("multiple", "");
+      }
+    });
+
+    async function alignSubmit(ev){
+      if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+      const templateInput = document.getElementById("pdb_template");
+      const filesInput = document.getElementById("pdb_files");
+      if(templateInput.files.length === 0 || filesInput.files.length === 0){
+        alert("テンプレートと対象ファイルを選んでください");
+        return;
+      }
+      const templateFile = templateInput.files[0];
+      const templateText = await templateFile.text();
+      const templateAtoms = parsePDB(templateText);
+
+      stage.removeAllComponents();
+      await stage.loadFile(new Blob([templateText], {type:"text/plain"}), {ext:"pdb"}).then(o=>{
+        o.addRepresentation("cartoon",{color:"blue"});
+        o.autoView();
+      });
+
+      let resultsHtml = "<table><tr><th>ファイル</th><th>RMSD(Å)</th><th>操作</th></tr>";
+      for(const f of filesInput.files){
+        const pdbText = await f.text();
+        const mobileAtoms = parsePDB(pdbText);
+        const [rmsd, transformed] = alignKabsch(templateAtoms, mobileAtoms);
+        const blob = new Blob([transformed], {type:"text/plain"});
+        const url = URL.createObjectURL(blob);
+        resultsHtml += `<tr class="result-row"><td>${f.name}</td><td>${rmsd.toFixed(3)}</td>
+          <td><a href="${url}" download="${f.name.replace('.pdb','_aligned.pdb')}">DL</a>
+          <button onclick="showAligned('${url}','${f.name}')">表示</button></td></tr>`;
+      }
+      resultsHtml += "</table>";
+      document.getElementById("results").innerHTML = resultsHtml;
+    }
+
+    function parsePDB(text){
+      const atoms=[];
+      for(const line of text.split("\n")){
+        if(line.startsWith("ATOM")||line.startsWith("HETATM")){
+          const name=line.substr(12,4).trim();
+          const x=parseFloat(line.substr(30,8));
+          const y=parseFloat(line.substr(38,8));
+          const z=parseFloat(line.substr(46,8));
+          atoms.push({name,x,y,z,line});
+        }
+      }
+      return atoms;
+    }
+
+    function alignKabsch(ref,mob){
+      const P=[]; const Q=[];
+      const n=Math.min(ref.length,mob.length,200);
+      for(let i=0;i<n;i++){P.push([ref[i].x,ref[i].y,ref[i].z]); Q.push([mob[i].x,mob[i].y,mob[i].z]);}
+      const Pc=center(P), Qc=center(Q);
+      const X=sub(P,Pc), Y=sub(Q,Qc);
+      const H=matmul(transpose(X),Y);
+      const {U,S,V}=svd(H);
+      let R=matmul(V,transpose(U));
+      if(determinant(R)<0){for(let i=0;i<3;i++)V[i][2]*=-1;R=matmul(V,transpose(U));}
+      const t=sub(Qc,matmul(R,Pc));
+      const MT=add(matmul(X,R),t);
+      const r=rmsd(MT,Y);
+      const out=mob.map((a,i)=>a.line.substr(0,30)+
+        (MT[i]?formatCoord(MT[i][0]):a.line.substr(30,8))+
+        (MT[i]?formatCoord(MT[i][1]):a.line.substr(38,8))+
+        (MT[i]?formatCoord(MT[i][2]):a.line.substr(46,8))+
+        a.line.substr(54));
+      return [r,out.join("\n")];
+    }
+
+    function center(P){const n=P.length;return [0,1,2].map(j=>P.reduce((s,p)=>s+p[j],0)/n);}
+    function sub(P,c){return P.map(p=>p.map((v,i)=>v-c[i]));}
+    function add(P,c){return P.map(p=>p.map((v,i)=>v+c[i]));}
+    function transpose(A){return A[0].map((_,i)=>A.map(r=>r[i]));}
+    function matmul(A,B){
+      const rows=A.length,cols=B[0].length,inner=B.length;
+      const out=Array.from({length:rows},()=>Array(cols).fill(0));
+      for(let i=0;i<rows;i++)for(let j=0;j<cols;j++)for(let k=0;k<inner;k++)out[i][j]+=A[i][k]*B[k][j];
+      return out;
+    }
+    function determinant(M){return M[0][0]*(M[1][1]*M[2][2]-M[1][2]*M[2][1])
+                               -M[0][1]*(M[1][0]*M[2][2]-M[1][2]*M[2][0])
+                               +M[0][2]*(M[1][0]*M[2][1]-M[1][1]*M[2][0]);}
+    function rmsd(A,B){let s=0;for(let i=0;i<A.length;i++)for(let j=0;j<3;j++){const d=A[i][j]-B[i][j];s+=d*d;}return Math.sqrt(s/A.length);}
+    function formatCoord(v){return v.toFixed(3).toString().padStart(8);}
+    function svd(A){
+      const M=A.length,N=A[0].length,At=transpose(A),AtA=matmul(At,A);
+      let V=identity(N);
+      for(let iter=0;iter<50;iter++){
+        for(let p=0;p<N;p++)for(let q=p+1;q<N;q++){
+          const app=AtA[p][p],aqq=AtA[q][q],apq=AtA[p][q];
+          if(Math.abs(apq)<1e-10)continue;
+          const phi=0.5*Math.atan2(2*apq,aqq-app),c=Math.cos(phi),s=Math.sin(phi);
+          for(let k=0;k<N;k++){const pk=AtA[p][k],qk=AtA[q][k];AtA[p][k]=c*pk-s*qk;AtA[q][k]=s*pk+c*qk;}
+          for(let k=0;k<N;k++){const kp=AtA[k][p],kq=AtA[k][q];AtA[k][p]=c*kp-s*kq;AtA[k][q]=s*kp+c*kq;}
+          for(let k=0;k<N;k++){const vk=V[k][p],wk=V[k][q];V[k][p]=c*vk-s*wk;V[k][q]=s*vk+c*wk;}
+        }
+      }
+      const U=identity(M),S=Array(N).fill(0);
+      for(let i=0;i<N;i++){S[i]=Math.sqrt(Math.max(AtA[i][i],0));}
+      return {U,S,V};
+    }
+    function identity(n){return Array.from({length:n},(_,i)=>Array.from({length:n},(_,j)=>i===j?1:0));}
+
+    async function showAligned(url,name){
+      const text=await (await fetch(url)).text();
+      await stage.loadFile(new Blob([text],{type:"text/plain"}),{ext:"pdb"}).then(o=>{
+        o.addRepresentation("cartoon",{color:"red"});
+        o.autoView();
+      });
+    }
+  </script>
+</body>
+</html>
