@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>StructAlign — 構造アラインメント（ブラウザ内 / フォルダ対応）</title>
+  <title>StructAlign — ブラウザでのPDBアラインメント（二量体対応・FASTAバッチ・デバッグ付き）</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
   <script src="https://unpkg.com/ngl@latest/dist/ngl.js"></script>
   <style>
@@ -21,25 +21,26 @@
 <body>
   <main class="container">
     <header>
-      <h1>StructAlign <small class="muted">— 構造アラインメント（Kabsch法・ブラウザ内）</small></h1>
-      <p class="muted">テンプレート <code>.pdb</code> 1件 + 複数の <code>.pdb</code> を読み込みます。処理はすべてローカル（ブラウザ）で実行され、外部送信されません。</p>
+      <h1>StructAlign <small class="muted">— ブラウザ内での構造アラインメント (Kabsch法)</small></h1>
+      <p class="muted">2つの <code>.pdb</code> ファイルを読み込みます。処理はすべてローカル（ブラウザ）で実行され、サーバーへ送信されません。</p>
     </header>
 
     <form id="form" onsubmit="alignSubmit(event)">
       <div class="grid">
-        <label>テンプレート PDB（1件）
-          <input type="file" name="pdb_target" accept=".pdb" required>
+        <label>テンプレート PDB
+          <input type="file" name="pdb_target" accept=".pdb">
         </label>
-        <label>アライン対象 PDB（フォルダ/複数可）
-          <input type="file" name="pdb_mobile" accept=".pdb" multiple webkitdirectory>
+        <label>アライン対象 PDB
+          <input type="file" id="pdb_mobile" name="pdb_mobile" accept=".pdb" multiple>
+          <small class="muted"><input type="checkbox" id="folderMode"> フォルダを選ぶ（サブフォルダも含めて読み込み）</small>
         </label>
       </div>
       <div class="grid">
         <label>テンプレートのチェーン（カンマ区切り可: 例 A,B）
-          <input name="chain_target" value="A,B" maxlength="50">
+          <input name="chain_target" value="A,B" maxlength="20">
         </label>
         <label>対象のチェーン（カンマ区切り可: 例 A,B）
-          <input name="chain_mobile" value="A,B" maxlength="50">
+          <input name="chain_mobile" value="A,B" maxlength="20">
         </label>
       </div>
       <div class="grid">
@@ -49,23 +50,33 @@
             <option value="auto2" selected>自動（二量体で最小RMSD）</option>
           </select>
         </label>
-        <label>戦略（配列は使いません）
-          <select name="match_strategy">
-            <option value="resnum" selected>残基番号一致</option>
-            <option value="index">インデックス順（CAの先頭N）</option>
-          </select>
-        </label>
-        <label>原子集合
-          <select name="atom_set">
-            <option value="bb" selected>Backbone（N, CA, C, O）</option>
-            <option value="ca">Cα のみ</option>
-            <option value="heavy">重原子（H以外すべて）</option>
-          </select>
-        </label>
-        <label>最低マッチ数
-          <input name="min_pairs" type="number" value="12" min="3" max="100000">
-        </label>
       </div>
+      <details open>
+        <summary>詳細設定</summary>
+        <small class="muted">高相同性どうしは「残基番号が一致」+「Backbone」推奨です。</small>
+        <div class="grid">
+          <label>
+            戦略
+            <select name="match_strategy">
+              <option value="seq">配列アラインメント（簡易グローバル）</option>
+              <option value="resnum" selected>残基番号が一致するもの</option>
+              <option value="index">先頭N残基の順番</option>
+            </select>
+          </label>
+          <label>
+            原子集合
+            <select name="atom_set">
+              <option value="bb" selected>Backbone（N, CA, C, O）</option>
+              <option value="ca">Cα のみ</option>
+              <option value="heavy">重原子（H以外すべて）</option>
+            </select>
+          </label>
+          <label>
+            最低マッチ数
+            <input name="min_pairs" type="number" value="12" min="3" max="100000">
+          </label>
+        </div>
+      </details>
       <div class="btnrow">
         <button type="submit">アラインメント実行</button>
         <button type="button" class="secondary" onclick="runDemo()">デモPDBで試す</button>
@@ -77,6 +88,44 @@
       <summary>デバッグログ</summary>
       <pre id="logbox"></pre>
     </details>
+
+    <hr>
+
+    <section>
+      <h3>FASTAバッチ（配列アラインメント）</h3>
+      <p class="muted">テンプレートのFASTA 1つ + 複数のFASTAを対象に、ブラウザ内でグローバルアラインメント（Needleman–Wunsch）をまとめて実行し、同一性などをCSVで出力します。構造アラインではありません（座標は扱いません）。</p>
+      <div class="grid">
+        <label>テンプレート FASTA（1件）
+          <input type="file" id="fasta_template" accept=".fa,.fasta,.faa,.fsa,.txt">
+        </label>
+        <label>対象 FASTA（複数可）
+          <input type="file" id="fasta_many" accept=".fa,.fasta,.faa,.fsa,.txt" multiple>
+        </label>
+      </div>
+      <div class="btnrow">
+        <button type="button" onclick="runFastaBatch()">FASTAバッチ実行</button>
+        <button type="button" class="secondary" id="btnCsv" disabled>結果CSVをダウンロード</button>
+      </div>
+      <div id="fastaErr" class="err" style="margin-top:.5rem"></div>
+      <div id="fastaResult" style="display:none; margin-top:1rem">
+        <div style="overflow:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>ファイル名</th>
+                <th>長さ(T)</th>
+                <th>長さ(M)</th>
+                <th>整列長</th>
+                <th>同一性(%)</th>
+                <th>ギャップ率(%)</th>
+                <th>スコア</th>
+              </tr>
+            </thead>
+            <tbody id="fastaTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
 
     <article id="result" style="display:none">
       <h3>結果</h3>
@@ -126,181 +175,218 @@
 /******************** ログ ********************/
 function toggleLog(){ const p=document.getElementById('logpanel'); p.style.display = (p.style.display==='none')?'':'none'; }
 function log(){ const box=document.getElementById('logbox'); box.textContent += Array.from(arguments).join(' ')+'\n'; }
-function showError(msg){ const d=document.getElementById('err'); d.textContent = msg||''; if(msg) log('ERROR:', msg); }
+function showError(msg){ const d=document.getElementById('err'); d.textContent = msg||''; log('ERROR:', msg); }
 
 /******************** PDB パーサ ********************/
 function parsePDB(pdbText) {
   const atoms = []; // {name,resName,chainID,resSeq,iCode,x,y,z,element,line}
   const lines = pdbText.split(/\r?\n/);
-  for (let i=0;i<lines.length;i++) {
-    const line = lines[i];
-    if (!line) continue;
-    if (line.startsWith('ATOM') || line.startsWith('HETATM')) {
-      const name = line.slice(12,16).trim();
-      const resName = line.slice(17,20).trim();
-      const chainID = line.slice(21,22).trim() || ' ';
-      const resSeq = parseInt(line.slice(22,26));
-      const iCode = line.slice(26,27).trim();
-      const x = parseFloat(line.slice(30,38));
-      const y = parseFloat(line.slice(38,46));
-      const z = parseFloat(line.slice(46,54));
-      let element = line.length >= 78 ? line.slice(76,78).trim() : '';
-      if(!element){ const c = name.trim()[0]; element = (c && c.toUpperCase()!=='H') ? c.toUpperCase() : 'H'; }
-      atoms.push({ name, resName, chainID, resSeq, iCode, x, y, z, element, line });
+  for (var i=0;i<lines.length;i++) {
+    var line = lines[i];
+    if (line && (line.indexOf('ATOM')===0 || line.indexOf('HETATM')===0)) {
+      var name = line.slice(12,16).trim();
+      var resName = line.slice(17,20).trim();
+      var chainID = line.slice(21,22).trim() || ' ';
+      var resSeq = parseInt(line.slice(22,26));
+      var iCode = line.slice(26,27).trim();
+      var x = parseFloat(line.slice(30,38));
+      var y = parseFloat(line.slice(38,46));
+      var z = parseFloat(line.slice(46,54));
+      var element = line.length >= 78 ? line.slice(76,78).trim() : '';
+      if(!element){ var c = name.trim()[0]; element = (c && c.toUpperCase()!=='H') ? c.toUpperCase() : 'H'; }
+      atoms.push({ name: name, resName: resName, chainID: chainID, resSeq: resSeq, iCode: iCode, x: x, y: y, z: z, element: element, line: line });
     }
   }
   return atoms;
 }
 
-/******************** セレクタ（構造のみ） ********************/
+/******************** セレクタ ********************/
 function selectChainCA(atoms, chains) {
-  const set = chains ? new Set(Array.isArray(chains)? chains : [chains]) : null;
-  const list = [];
-  const byKey = new Map();
-  for (const a of atoms) {
-    if (set && !set.has(a.chainID)) continue;
+  var set = new Set(Array.isArray(chains)? chains : [chains]);
+  var list = [];
+  var byKey = new Map();
+  for (var i=0;i<atoms.length;i++) {
+    var a = atoms[i];
+    if (chains && !set.has(a.chainID)) continue;
     if (a.name === 'CA') {
-      const key = a.chainID + '|' + a.resSeq + ':' + a.iCode;
-      const xyz = [a.x,a.y,a.z];
-      list.push({ key, chainID:a.chainID, resSeq:a.resSeq, iCode:a.iCode, resName:a.resName, xyz: xyz });
+      var key = a.chainID + '|' + a.resSeq + ':' + a.iCode;
+      var xyz = [a.x,a.y,a.z];
+      list.push({ key: key, chainID:a.chainID, resSeq:a.resSeq, iCode:a.iCode, resName:a.resName, xyz: xyz });
       byKey.set(key, xyz);
     }
   }
-  return { list, byKey };
+  return { list: list, byKey: byKey };
 }
 
 function selectAtoms(atoms, chains, atomSet){
-  const set = chains ? new Set(Array.isArray(chains)? chains : [chains]) : null;
-  const list=[]; const map=new Map();
-  const isBB = (n)=> n==='N' || n==='CA' || n==='C' || n==='O';
-  for(const a of atoms){
-    if(set && !set.has(a.chainID)) continue;
+  var set = new Set(Array.isArray(chains)? chains : [chains]);
+  var list=[]; var map=new Map();
+  function isBB(n){ return n==='N' || n==='CA' || n==='C' || n==='O'; }
+  for(var i=0;i<atoms.length;i++){
+    var a = atoms[i];
+    if(chains && !set.has(a.chainID)) continue;
     if(atomSet==='ca' && a.name!=='CA') continue;
     if(atomSet==='bb' && !isBB(a.name)) continue;
     if(atomSet==='heavy' && a.element==='H') continue;
-    const resKey = a.chainID + '|' + a.resSeq + ':' + a.iCode;
-    const compKey = resKey + '|' + a.name;
-    const xyz=[a.x,a.y,a.z];
-    list.push({resKey, atomName:a.name, xyz});
+    var resKey = a.chainID + '|' + a.resSeq + ':' + a.iCode;
+    var compKey = resKey + '|' + a.name;
+    var xyz=[a.x,a.y,a.z];
+    list.push({resKey:resKey, atomName:a.name, xyz:xyz});
     map.set(compKey, xyz);
   }
-  return { list, map };
+  return { list:list, map:map };
 }
 
-/******************** Kabsch（3x3 SVD） ********************/
-function meanVec(P){ const n=P.length; return [0,1,2].map(k=>P.reduce((s,p)=>s+p[k],0)/n); }
-function subVec(a,b){ return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
-function matMul(A,B){ const out=[[0,0,0],[0,0,0],[0,0,0]]; for(let i=0;i<3;i++) for(let j=0;j<3;j++) for(let k=0;k<3;k++) out[i][j]+=A[i][k]*B[k][j]; return out; }
-function matVec(A,v){ return [A[0][0]*v[0]+A[0][1]*v[1]+A[0][2]*v[2], A[1][0]*v[0]+A[1][1]*v[1]+A[1][2]*v[2], A[2][0]*v[0]+A[2][1]*v[1]+A[2][2]*v[2]]; }
+/******************** 配列アライン（CA用の簡易NW） ********************/
+var threeToOne = { ALA:'A', ARG:'R', ASN:'N', ASP:'D', CYS:'C', GLU:'E', GLN:'Q', GLY:'G', HIS:'H', ILE:'I', LEU:'L', LYS:'K', MET:'M', PHE:'F', PRO:'P', SER:'S', THR:'T', TRP:'W', TYR:'Y', VAL:'V', SEC:'U', PYL:'O' };
+function seqFromCA(list) { var s=''; for(var i=0;i<list.length;i++){ var r=list[i]; s += (threeToOne[r.resName] || 'X'); } return s; }
+function needlemanWunsch(a, b, cfg){ cfg=cfg||{}; var match=cfg.match||2, mismatch=cfg.mismatch||-1, gap=cfg.gap||-2;
+  var n=a.length, m=b.length, i, j;
+  var dp = new Array(n+1), bt = new Array(n+1);
+  for(i=0;i<=n;i++){ dp[i]=new Array(m+1).fill(0); bt[i]=new Array(m+1).fill(0); }
+  for(i=1;i<=n;i++){ dp[i][0]=i*gap; bt[i][0]=1; }
+  for(j=1;j<=m;j++){ dp[0][j]=j*gap; bt[0][j]=2; }
+  for(i=1;i<=n;i++){
+    for(j=1;j<=m;j++){
+      var scoreDiag = dp[i-1][j-1] + (a[i-1]===b[j-1]?match:mismatch);
+      var scoreUp = dp[i-1][j] + gap;
+      var scoreLeft = dp[i][j-1] + gap;
+      var maxv = Math.max(scoreDiag, scoreUp, scoreLeft);
+      dp[i][j]=maxv; bt[i][j] = (maxv===scoreDiag)?0:(maxv===scoreUp?1:2);
+    }
+  }
+  var A=[], B=[]; i=n; j=m;
+  while(i>0 || j>0){
+    var move = bt[i][j];
+    if (i>0 && j>0 && move===0){ A.push(a[i-1]); B.push(b[j-1]); i--; j--; }
+    else if (i>0 && (j===0 || move===1)){ A.push(a[i-1]); B.push('-'); i--; }
+    else { A.push('-'); B.push(b[j-1]); j--; }
+  }
+  A.reverse(); B.reverse();
+  return { a:A.join(''), b:B.join('') };
+}
 
+/******************** Kabsch ********************/
+function meanVec(P){ var n=P.length, k, s=[0,0,0]; for(var i=0;i<n;i++){ var p=P[i]; s[0]+=p[0]; s[1]+=p[1]; s[2]+=p[2]; } return [s[0]/n,s[1]/n,s[2]/n]; }
+function subVec(a,b){ return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
+function matMul(A,B){ var out=[[0,0,0],[0,0,0],[0,0,0]]; for(var i=0;i<3;i++) for(var j=0;j<3;j++) for(var k=0;k<3;k++) out[i][j]+=A[i][k]*B[k][j]; return out; }
+function matVec(A,v){ return [A[0][0]*v[0]+A[0][1]*v[1]+A[0][2]*v[2], A[1][0]*v[0]+A[1][1]*v[1]+A[1][2]*v[2], A[2][0]*v[0]+A[2][1]*v[1]+A[2][2]*v[2]]; }
 function svd3x3(M){
   function transpose(A){ return [[A[0][0],A[1][0],A[2][0]],[A[0][1],A[1][1],A[2][1]],[A[0][2],A[1][2],A[2][2]]]; }
   function matMul3(A,B){ return matMul(A,B); }
-  const Mt = transpose(M);
-  const MtM = matMul3(Mt,M);
+  var Mt = transpose(M); var MtM = matMul3(Mt,M);
   function eigSym3(A){
-    let V=[[1,0,0],[0,1,0],[0,0,1]];
-    let B=[[A[0][0],A[0][1],A[0][2]],[A[1][0],A[1][1],A[1][2]],[A[2][0],A[2][1],A[2][2]]];
-    for(let iter=0; iter<32; iter++){
-      let p=0,q=1; let max=Math.abs(B[0][1]); const pairs=[[0,1],[0,2],[1,2]];
-      for(const [i,j] of pairs){ const v=Math.abs(B[i][j]); if(v>max){max=v;p=i;q=j;} }
+    var V=[[1,0,0],[0,1,0],[0,0,1]]; var B=[[A[0][0],A[0][1],A[0][2]],[A[1][0],A[1][1],A[1][2]],[A[2][0],A[2][1],A[2][2]]];
+    for(var iter=0; iter<32; iter++){
+      var p=0,q=1; var max=Math.abs(B[0][1]); var pairs=[[0,1],[0,2],[1,2]];
+      for(var idx=0; idx<pairs.length; idx++){ var i=pairs[idx][0], j=pairs[idx][1]; var v=Math.abs(B[i][j]); if(v>max){max=v;p=i;q=j;} }
       if(max<1e-12) break;
-      const app=B[p][p], aqq=B[q][q], apq=B[p][q];
-      const phi=0.5*Math.atan2(2*apq, (aqq-app));
-      const c=Math.cos(phi), s=Math.sin(phi);
-      const Rp=[[1,0,0],[0,1,0],[0,0,1]]; Rp[p][p]=c; Rp[q][q]=c; Rp[p][q]=s; Rp[q][p]=-s;
-      const Rt=[[1,0,0],[0,1,0],[0,0,1]]; Rt[p][p]=c; Rt[q][q]=c; Rt[p][q]=-s; Rt[q][p]=s;
+      var app=B[p][p], aqq=B[q][q], apq=B[p][q];
+      var phi=0.5*Math.atan2(2*apq, (aqq-app));
+      var c=Math.cos(phi), s=Math.sin(phi);
+      var Rp=[[1,0,0],[0,1,0],[0,0,1]]; Rp[p][p]=c; Rp[q][q]=c; Rp[p][q]=s; Rp[q][p]=-s;
+      var Rt=[[1,0,0],[0,1,0],[0,0,1]]; Rt[p][p]=c; Rt[q][q]=c; Rt[p][q]=-s; Rt[q][p]=s;
       B = matMul3(matMul3(Rt,B),Rp);
       V = matMul3(V,Rp);
     }
     return {vals:[B[0][0],B[1][1],B[2][2]], vecs:V};
   }
-  const es = eigSym3(MtM);
-  const Svals = es.vals.map(v=> Math.sqrt(Math.max(0,v)) );
-  const V = [[es.vecs[0][0],es.vecs[0][1],es.vecs[0][2]],[es.vecs[1][0],es.vecs[1][1],es.vecs[1][2]],[es.vecs[2][0],es.vecs[2][1],es.vecs[2][2]]];
-  const Sinv = [[ Svals[0]?1/Svals[0]:0,0,0 ],[0,Svals[1]?1/Svals[1]:0,0],[0,0,Svals[2]?1/Svals[2]:0]];
-  const U = matMul(matMul(M,V),Sinv);
-  return {U, S:Svals, Vt: transpose(V)};
+  var es = eigSym3(MtM);
+  var Svals = [Math.sqrt(Math.max(0,es.vals[0])), Math.sqrt(Math.max(0,es.vals[1])), Math.sqrt(Math.max(0,es.vals[2]))];
+  var V = [[es.vecs[0][0],es.vecs[0][1],es.vecs[0][2]],[es.vecs[1][0],es.vecs[1][1],es.vecs[1][2]],[es.vecs[2][0],es.vecs[2][1],es.vecs[2][2]]];
+  var Sinv = [[ Svals[0]?1/Svals[0]:0,0,0 ],[0,Svals[1]?1/Svals[1]:0,0],[0,0,Svals[2]?1/Svals[2]:0]];
+  var U = matMul(matMul(M,V),Sinv);
+  return {U:U, S:Svals, Vt: transpose(V)};
 }
-
 function kabsch(P, Q){
-  const Pc = meanVec(P), Qc = meanVec(Q);
-  const X = P.map(p=>subVec(p,Pc));
-  const Y = Q.map(q=>subVec(q,Qc));
-  const H=[[0,0,0],[0,0,0],[0,0,0]];
-  for(let i=0;i<X.length;i++){
-    const x=X[i], y=Y[i];
+  var Pc = meanVec(P), Qc = meanVec(Q);
+  var X = new Array(P.length), Y = new Array(Q.length);
+  for(var i=0;i<P.length;i++){ X[i]=subVec(P[i],Pc); Y[i]=subVec(Q[i],Qc); }
+  var H=[[0,0,0],[0,0,0],[0,0,0]];
+  for(var i2=0;i2<X.length;i2++){
+    var x=X[i2], y=Y[i2];
     H[0][0]+=x[0]*y[0]; H[0][1]+=x[0]*y[1]; H[0][2]+=x[0]*y[2];
     H[1][0]+=x[1]*y[0]; H[1][1]+=x[1]*y[1]; H[1][2]+=x[1]*y[2];
     H[2][0]+=x[2]*y[0]; H[2][1]+=x[2]*y[1]; H[2][2]+=x[2]*y[2];
   }
-  const {U, Vt} = svd3x3(H);
-  const Rt=[[U[0][0],U[1][0],U[2][0]],[U[0][1],U[1][1],U[2][1]],[U[0][2],U[1][2],U[2][2]]];
-  let R = matMul(Vt, Rt);
-  const det = R[0][0]*(R[1][1]*R[2][2]-R[1][2]*R[2][1]) - R[0][1]*(R[1][0]*R[2][2]-R[1][2]*R[2][0]) + R[0][2]*(R[1][0]*R[2][1]-R[1][1]*R[2][0]);
+  var sv = svd3x3(H);
+  var U=sv.U, Vt=sv.Vt;
+  var Rt=[[Vt[0][0],Vt[1][0],Vt[2][0]],[Vt[0][1],Vt[1][1],Vt[2][1]],[Vt[0][2],Vt[1][2],Vt[2][2]]];
+  var R = matMul(Vt, Rt);
+  var det = R[0][0]*(R[1][1]*R[2][2]-R[1][2]*R[2][1]) - R[0][1]*(R[1][0]*R[2][2]-R[1][2]*R[2][0]) + R[0][2]*(R[1][0]*R[2][1]-R[1][1]*R[2][0]);
   if(det<0){ Vt[2][0]*=-1; Vt[2][1]*=-1; Vt[2][2]*=-1; R = matMul(Vt, Rt); }
-  const t = [ Qc[0] - (R[0][0]*Pc[0]+R[0][1]*Pc[1]+R[0][2]*Pc[2]),
-              Qc[1] - (R[1][0]*Pc[0]+R[1][1]*Pc[1]+R[1][2]*Pc[2]),
-              Qc[2] - (R[2][0]*Pc[0]+R[2][1]*Pc[1]+R[2][2]*Pc[2]) ];
-  return {R,t};
+  var t = [ Qc[0] - (R[0][0]*Pc[0]+R[0][1]*Pc[1]+R[0][2]*Pc[2]),
+            Qc[1] - (R[1][0]*Pc[0]+R[1][1]*Pc[1]+R[1][2]*Pc[2]),
+            Qc[2] - (R[2][0]*Pc[0]+R[2][1]*Pc[1]+R[2][2]*Pc[2]) ];
+  return {R:R,t:t};
 }
-function rmsd(A,B){
-  let s=0; for(let i=0;i<A.length;i++){ const dx=A[i][0]-B[i][0], dy=A[i][1]-B[i][1], dz=A[i][2]-B[i][2]; s+=dx*dx+dy*dy+dz*dz; }
-  return Math.sqrt(s/A.length);
-}
+function rmsd(A,B){ var s=0; for(var i=0;i<A.length;i++){ var dx=A[i][0]-B[i][0], dy=A[i][1]-B[i][1], dz=A[i][2]-B[i][2]; s+=dx*dx+dy*dy+dz*dz; } return Math.sqrt(s/A.length); }
 
-/******************** マッチング（構造のみ・多チェーン対応） ********************/
+/******************** マッチング（多チェーン対応） ********************/
 function matchPairs(strategy, caT, caM, atomSet, atomsT, atomsM, chainMap){
-  const T=[]; const M=[];
+  var T=[]; var M=[];
   function pushPairsCA(mapT, mapM){
-    const keys = Array.from(mapT.keys()).filter(k=>mapM.has(k)).sort((a,b)=>{
-      const ca=a.split('|')[0], cb=b.split('|')[0];
-      const ai=parseInt(a.split('|')[1].split(':')[0]), bi=parseInt(b.split('|')[1].split(':')[0]);
+    var keys = Array.from(mapT.keys()).filter(function(k){return mapM.has(k);}).sort(function(a,b){
+      var ca=a.split('|')[0], cb=b.split('|')[0];
+      var ai=parseInt(a.split('|')[1].split(':')[0]), bi=parseInt(b.split('|')[1].split(':')[0]);
       return ca.localeCompare(cb) || (ai-bi);
     });
-    for(const k of keys){ T.push(mapT.get(k)); M.push(mapM.get(k)); }
+    for(var i=0;i<keys.length;i++){ var k=keys[i]; T.push(mapT.get(k)); M.push(mapM.get(k)); }
   }
   function pushPairsAtoms(selT, selM){
-    const keys = Array.from(selT.map.keys()).filter(k=>selM.map.has(k)).sort((a,b)=>{
-      const ca=a.split('|')[0], cb=b.split('|')[0];
-      const ia=a.split('|')[1], ib=b.split('|')[1];
-      const na=a.split('|')[2], nb=b.split('|')[2];
-      const ai=parseInt(ia.split(':')[0]), bi=parseInt(ib.split(':')[0]);
-      const r=ca.localeCompare(cb) || (ai-bi); return r!==0 ? r : na.localeCompare(nb);
+    var keys = Array.from(selT.map.keys()).filter(function(k){return selM.map.has(k);}).sort(function(a,b){
+      var ca=a.split('|')[0], cb=b.split('|')[0];
+      var ia=a.split('|')[1], ib=b.split('|')[1];
+      var na=a.split('|')[2], nb=b.split('|')[2];
+      var ai=parseInt(ia.split(':')[0]), bi=parseInt(ib.split(':')[0]);
+      var r=ca.localeCompare(cb) || (ai-bi); if(r!==0) return r; return na.localeCompare(nb);
     });
-    for(const k of keys){ T.push(selT.map.get(k)); M.push(selM.map.get(k)); }
+    for(var j=0;j<keys.length;j++){ var k2=keys[j]; T.push(selT.map.get(k2)); M.push(selM.map.get(k2)); }
   }
-  for(const [ct, cm] of chainMap){
+  for(var m=0;m<chainMap.length;m++){
+    var ct=chainMap[m][0], cm=chainMap[m][1];
     if(strategy==='resnum'){
       if(atomSet==='ca'){
-        const mapT = new Map(caT.list.filter(r=>r.chainID===ct).map(r=>[r.chainID+'|'+r.resSeq+':'+r.iCode, r.xyz]));
-        const mapM = new Map(caM.list.filter(r=>r.chainID===cm).map(r=>[r.chainID+'|'+r.resSeq+':'+r.iCode, r.xyz]));
+        var mapT = new Map(caT.list.filter(function(r){return r.chainID===ct;}).map(function(r){return [r.chainID+'|'+r.resSeq+':'+r.iCode, r.xyz];}));
+        var mapM = new Map(caM.list.filter(function(r){return r.chainID===cm;}).map(function(r){return [r.chainID+'|'+r.resSeq+':'+r.iCode, r.xyz];}));
         pushPairsCA(mapT, mapM);
       }else{
-        const selT = selectAtoms(atomsT, [ct], atomSet);
-        const selM = selectAtoms(atomsM, [cm], atomSet);
+        var selT = selectAtoms(atomsT, [ct], atomSet);
+        var selM = selectAtoms(atomsM, [cm], atomSet);
         pushPairsAtoms(selT, selM);
       }
     } else if (strategy==='index'){
-      const lt = caT.list.filter(r=>r.chainID===ct);
-      const lm = caM.list.filter(r=>r.chainID===cm);
-      const n = Math.min(lt.length, lm.length);
-      for(let i=0;i<n;i++){ T.push(lt[i].xyz); M.push(lm[i].xyz); }
+      var lt = caT.list.filter(function(r){return r.chainID===ct;});
+      var lm = caM.list.filter(function(r){return r.chainID===cm;});
+      var n = Math.min(lt.length, lm.length);
+      for(var i3=0;i3<n;i3++){ T.push(lt[i3].xyz); M.push(lm[i3].xyz); }
+    } else {
+      var lt2 = caT.list.filter(function(r){return r.chainID===ct;});
+      var lm2 = caM.list.filter(function(r){return r.chainID===cm;});
+      var seqT = seqFromCA(lt2), seqM = seqFromCA(lm2);
+      var aln = needlemanWunsch(seqT, seqM, {match:2, mismatch:-1, gap:-2});
+      var iT=0, iM=0;
+      for(var k=0;k<aln.a.length;k++){
+        var aa=aln.a[k], bb=aln.b[k];
+        if(aa!=='-' && bb!=='-'){ T.push(lt2[iT].xyz); M.push(lm2[iM].xyz); }
+        if(aa!=='-') iT++; if(bb!=='-') iM++;
+      }
     }
   }
-  return {T,M, count:T.length};
+  return {T:T,M:M, count:T.length};
 }
 
 /******************** 変換 & 表示 ********************/
 function transformPDB(atoms, R, t){
   function fmt8(val){ return val.toFixed(3).toString().padStart(8,' '); }
-  const out = [];
-  for(const a of atoms){
-    const v=[a.x,a.y,a.z];
-    const tv=[ R[0][0]*v[0]+R[0][1]*v[1]+R[0][2]*v[2]+t[0],
-               R[1][0]*v[0]+R[1][1]*v[1]+R[1][2]*v[2]+t[1],
-               R[2][0]*v[0]+R[2][1]*v[1]+R[2][2]*v[2]+t[2] ];
-    let line = a.line;
+  var out = [];
+  for(var i=0;i<atoms.length;i++){
+    var a=atoms[i];
+    var v=[a.x,a.y,a.z];
+    var tv=[ R[0][0]*v[0]+R[0][1]*v[1]+R[0][2]*v[2]+t[0],
+             R[1][0]*v[0]+R[1][1]*v[1]+R[1][2]*v[2]+t[1],
+             R[2][0]*v[0]+R[2][1]*v[1]+R[2][2]*v[2]+t[2] ];
+    var line = a.line;
     line = line.substring(0,30) + fmt8(tv[0]) + fmt8(tv[1]) + fmt8(tv[2]) + line.substring(54);
     out.push(line);
   }
@@ -308,59 +394,63 @@ function transformPDB(atoms, R, t){
   return out.join('\n');
 }
 function renderNGL(divId, pdbText, color){
-  const stage = new NGL.Stage(divId, { backgroundColor: '#ffffff' });
+  var stage = new NGL.Stage(divId, { backgroundColor: '#ffffff' });
   stage.removeAllComponents();
-  const blob = new Blob([pdbText], {type:'text/plain'});
-  stage.loadFile(blob, {ext:'pdb'}).then(c=>{
-    c.addRepresentation('cartoon', {color, roughness:1.0});
+  var blob = new Blob([pdbText], {type:'text/plain'});
+  stage.loadFile(blob, {ext:'pdb'}).then(function(c){
+    c.addRepresentation('cartoon', {color:color, roughness:1.0});
     c.autoView();
   });
   return stage;
 }
 
-/******************** 実行コア（1対1） ********************/
+/******************** 実行コア ********************/
 function runAlignWithTexts(targText, mobText, opts){
   opts = opts||{}; showError(''); log('runAlignWithTexts start');
-  const chainT_in = opts.chainT || ['A','B'];
-  const chainM_in = opts.chainM || ['A','B'];
-  const mapMode   = opts.mapMode || 'auto2';
-  const strategy  = opts.strategy || 'resnum';
-  const atomSet   = opts.atomSet || 'bb';
-  const minPairs  = opts.minPairs || 12;
+  var chainT_in = opts.chainT || ['A','B'];
+  var chainM_in = opts.chainM || ['A','B'];
+  var mapMode   = opts.mapMode || 'auto2';
+  var strategy  = opts.strategy || 'resnum';
+  var atomSet   = opts.atomSet || 'bb';
+  var minPairs  = opts.minPairs || 12;
 
-  const atomsT = parsePDB(targText);
-  const atomsM = parsePDB(mobText);
+  var atomsT = parsePDB(targText);
+  var atomsM = parsePDB(mobText);
   log('atomsT:', atomsT.length, 'atomsM:', atomsM.length);
-  const caT = selectChainCA(atomsT, chainT_in);
-  const caM = selectChainCA(atomsM, chainM_in);
+  var caT = selectChainCA(atomsT, chainT_in);
+  var caM = selectChainCA(atomsM, chainM_in);
   log('CA counts T:', caT.list.length, 'M:', caM.list.length);
 
   function attemptWithMap(chainMap){
-    const res = matchPairs(strategy, caT, caM, atomSet, atomsT, atomsM, chainMap);
+    var res = matchPairs(strategy, caT, caM, atomSet, atomsT, atomsM, chainMap);
     log('attempt map', JSON.stringify(chainMap), 'pairs=', res.count);
     if(res.count < Math.max(3,minPairs)) return {ok:false};
-    const tr = kabsch(res.M, res.T);
-    const MT = res.M.map(v=> [ tr.R[0][0]*v[0]+tr.R[0][1]*v[1]+tr.R[0][2]*v[2]+tr.t[0],
-                                tr.R[1][0]*v[0]+tr.R[1][1]*v[1]+tr.R[1][2]*v[2]+tr.t[1],
-                                tr.R[2][0]*v[0]+tr.R[2][1]*v[1]+tr.R[2][2]*v[2]+tr.t[2] ]);
-    const r = rmsd(MT, res.T);
+    var tr = kabsch(res.M, res.T);
+    var MT = new Array(res.M.length);
+    for(var i=0;i<res.M.length;i++){
+      var v=res.M[i];
+      MT[i] = [ tr.R[0][0]*v[0]+tr.R[0][1]*v[1]+tr.R[0][2]*v[2]+tr.t[0],
+                tr.R[1][0]*v[0]+tr.R[1][1]*v[1]+tr.R[1][2]*v[2]+tr.t[1],
+                tr.R[2][0]*v[0]+tr.R[2][1]*v[1]+tr.R[2][2]*v[2]+tr.t[2] ];
+    }
+    var r = rmsd(MT, res.T);
     return {ok:true, R:tr.R, t:tr.t, count:res.count, rmsd:r};
   }
 
-  let best = null, usedMap = null;
+  var best = null, usedMap = null;
   if(mapMode==='auto2' && chainT_in.length===2 && chainM_in.length===2){
-    const maps = [ [[chainT_in[0], chainM_in[0]],[chainT_in[1], chainM_in[1]]],
-                   [[chainT_in[0], chainM_in[1]],[chainT_in[1], chainM_in[0]]] ];
-    for(const m of maps){ const rs = attemptWithMap(m); if(rs.ok && (!best || rs.rmsd<best.rmsd)){ best=rs; usedMap=m; } }
+    var maps = [ [[chainT_in[0], chainM_in[0]],[chainT_in[1], chainM_in[1]]],
+                 [[chainT_in[0], chainM_in[1]],[chainT_in[1], chainM_in[0]]] ];
+    for(var mi=0; mi<maps.length; mi++){ var m=maps[mi]; var rs = attemptWithMap(m); if(rs.ok && (!best || rs.rmsd<best.rmsd)){ best=rs; usedMap=m; } }
   } else {
-    const zipped=[]; for(let i=0; i<Math.min(chainT_in.length, chainM_in.length); i++){ zipped.push([chainT_in[i], chainM_in[i]]); }
-    const m2 = zipped.length? zipped : [[chainT_in[0]||'A', chainM_in[0]||'A']];
-    const rs2 = attemptWithMap(m2); if(rs2.ok){ best=rs2; usedMap=m2; }
+    var zipped=[]; for(var zi=0; zi<Math.min(chainT_in.length, chainM_in.length); zi++){ zipped.push([chainT_in[zi], chainM_in[zi]]); }
+    var m2 = zipped.length? zipped : [[chainT_in[0], chainM_in[0]]];
+    var rs2 = attemptWithMap(m2); if(rs2.ok){ best=rs2; usedMap=m2; }
   }
 
   if(!best){ showError('マッチ数が不足、またはチェーン対応が不正です。チェーン指定・戦略・原子集合を見直してください。'); return false; }
 
-  const alignedPDBTextLocal = transformPDB(atomsM, best.R, best.t);
+  var alignedPDBTextLocal = transformPDB(atomsM, best.R, best.t);
   document.getElementById('matched').textContent = best.count;
   document.getElementById('rmsd').textContent = best.rmsd.toFixed(3);
   document.getElementById('result').style.display = '';
@@ -371,76 +461,75 @@ function runAlignWithTexts(targText, mobText, opts){
   return true;
 }
 
-/******************** UIハンドラ（フォルダ/複数） ********************/
-let alignedPDBText='';
-let _alignedMap = {}; // filename -> {text, rmsd, count}
-
+/******************** UIハンドラ ********************/
+var alignedPDBText='';
+var _alignedMap = {}; // filename -> {text, rmsd, count, previewed:false}
 async function alignSubmit(ev){
   ev.preventDefault(); showError('');
   try{
-    const fd = new FormData(document.getElementById('form'));
-    const targetInput = document.querySelector('input[name="pdb_target"]');
-    const mobileInput = document.querySelector('input[name="pdb_mobile"]');
-    const targetFile = targetInput && targetInput.files[0];
-    let mobileFiles = mobileInput ? Array.from(mobileInput.files||[]) : [];
-    mobileFiles = mobileFiles.filter(f=>/\.pdb$/i.test(f.name));
-    if(!targetFile || mobileFiles.length===0){ showError('テンプレートPDB 1件と対象PDB（1件以上）を選択してください'); return; }
+    var fd = new FormData(document.getElementById('form'));
+    var targetInput = document.querySelector('input[name="pdb_target"]');
+    var mobileInput = document.querySelector('input[name="pdb_mobile"]');
+    var targetFile = targetInput && targetInput.files[0];
+    var mobileFiles = mobileInput ? Array.from(mobileInput.files||[]) : [];
+    // .pdb のみ抽出（フォルダ選択時は webkitRelativePath を保持）
+    mobileFiles = mobileFiles.filter(function(f){ return /\.pdb$/i.test(f.name); });
+    if(!targetFile || mobileFiles.length===0){ showError('PDBファイル（テンプレート1件＋対象1件以上）を選択してください'); return; }
 
-    const chainT_in = (fd.get('chain_target')||'A').split(',').map(s=>s.trim()).filter(Boolean);
-    const chainM_in = (fd.get('chain_mobile')||'A').split(',').map(s=>s.trim()).filter(Boolean);
-    const mapMode = fd.get('chain_map_mode')||'auto2';
-    const strategy = fd.get('match_strategy')||'resnum';
-    const atomSet  = fd.get('atom_set')||'bb';
-    const minPairs = parseInt(fd.get('min_pairs')||'12', 10);
+    var chainT_in = (fd.get('chain_target')||'A').split(',').map(function(s){return s.trim();}).filter(Boolean);
+    var chainM_in = (fd.get('chain_mobile')||'A').split(',').map(function(s){return s.trim();}).filter(Boolean);
+    var mapMode = fd.get('chain_map_mode')||'auto2';
+    var strategy = fd.get('match_strategy')||'resnum';
+    var atomSet  = fd.get('atom_set')||'bb';
+    var minPairs = parseInt(fd.get('min_pairs')||'12');
 
-    const targText = await targetFile.text();
+    var targText = await targetFile.text();
     // 先にテンプレートを描画
     document.getElementById('result').style.display = '';
     renderNGL('stageT', targText, 0x2196f3);
 
     // テーブル初期化
-    _alignedMap = {}; const tbody=document.getElementById('batchTbody'); tbody.innerHTML='';
+    _alignedMap = {}; var tbody=document.getElementById('batchTbody'); tbody.innerHTML='';
     document.getElementById('batchSection').style.display='';
 
-    // チェーン対応候補のビルド
-    function candidateMaps(){
-      if(mapMode==='auto2' && chainT_in.length===2 && chainM_in.length===2){
-        return [
-          [[chainT_in[0],chainM_in[0]],[chainT_in[1],chainM_in[1]]],
-          [[chainT_in[0],chainM_in[1]],[chainT_in[1],chainM_in[0]]]
-        ];
-      }
-      const zipped=[]; const n=Math.min(chainT_in.length, chainM_in.length);
-      for(let i=0;i<n;i++) zipped.push([chainT_in[i], chainM_in[i]]);
-      return [zipped.length?zipped:[[chainT_in[0]||'A', chainM_in[0]||'A']]];
-    }
-
     // 各ファイルを順次処理
-    for (const f of mobileFiles){
+    for(const f of mobileFiles){
       const mobText = await f.text();
-      const atomsT = parsePDB(targText);
-      const atomsM = parsePDB(mobText);
-      const caT = selectChainCA(atomsT, null);
-      const caM = selectChainCA(atomsM, null);
+      // --- core: run alignment without touching global viewers until preview step ---
+      var atomsT = parsePDB(targText);
+      var atomsM = parsePDB(mobText);
+      var caT = selectChainCA(atomsT, chainT_in);
+      var caM = selectChainCA(atomsM, chainM_in);
 
-      let best=null;
-      for(const cmap of candidateMaps()){
-        const res = matchPairs(strategy, caT, caM, atomSet, atomsT, atomsM, cmap);
-        if(res.count < Math.max(3,minPairs)) continue;
-        const tr = kabsch(res.M, res.T);
-        const MT = res.M.map(v=> [ tr.R[0][0]*v[0]+tr.R[0][1]*v[1]+tr.R[0][2]*v[2]+tr.t[0],
-                                    tr.R[1][0]*v[0]+tr.R[1][1]*v[1]+tr.R[1][2]*v[2]+tr.t[1],
-                                    tr.R[2][0]*v[0]+tr.R[2][1]*v[1]+tr.R[2][2]*v[2]+tr.t[2] ]);
-        const r = rmsd(MT, res.T);
-        const pack = {R:tr.R, t:tr.t, count:res.count, rmsd:r};
-        if(!best || r<best.rmsd) best=pack;
+      function attempt(chainMap){
+        var res = matchPairs(strategy, caT, caM, atomSet, atomsT, atomsM, chainMap);
+        if(res.count < Math.max(3,minPairs)) return null;
+        var tr = kabsch(res.M, res.T);
+        var MT = new Array(res.M.length);
+        for(var i=0;i<res.M.length;i++){
+          var v=res.M[i]; MT[i] = [ tr.R[0][0]*v[0]+tr.R[0][1]*v[1]+tr.R[0][2]*v[2]+tr.t[0], tr.R[1][0]*v[0]+tr.R[1][1]*v[1]+tr.R[1][2]*v[2]+tr.t[1], tr.R[2][0]*v[0]+tr[2][1]*v[1]+tr[2][2]*v[2]+tr.t[2] ];
+        }
+        var r = rmsd(MT, res.T);
+        return {R:tr.R,t:tr.t,count:res.count,rmsd:r};
+      }
+
+      // チェーン対応の探索
+      var chainMapFinal=null, best=null;
+      if(mapMode==='auto2' && chainT_in.length===2 && chainM_in.length===2){
+        var maps = [ [[chainT_in[0], chainM_in[0]],[chainT_in[1], chainM_in[1]]], [[chainT_in[0], chainM_in[1]],[chainT_in[1], chainM_in[0]]] ];
+        for(const m of maps){ var rs = attempt(m); if(rs && (!best || rs.rmsd<best.rmsd)){ best=rs; chainMapFinal=m; } }
+      }else{
+        var zipped=[]; for(var zi=0; zi<Math.min(chainT_in.length, chainM_in.length); zi++){ zipped.push([chainT_in[zi], chainM_in[zi]]); }
+        chainMapFinal = zipped.length? zipped : [[chainT_in[0], chainM_in[0]]];
+        best = attempt(chainMapFinal);
       }
 
       if(best){
-        const aligned = transformPDB(atomsM, best.R, best.t);
+        var aligned = transformPDB(atomsM, best.R, best.t);
         _alignedMap[f.name] = { text: aligned, rmsd: best.rmsd, count: best.count };
-        const trEl=document.createElement('tr');
-        trEl.innerHTML = `<td>${f.webkitRelativePath || f.name}</td><td>${best.count}</td><td>${best.rmsd.toFixed(3)}</td>
+        // 表に行を追加
+        var trEl=document.createElement('tr');
+        trEl.innerHTML = `<td>${f.name}</td><td>${best.count}</td><td>${best.rmsd.toFixed(3)}</td>
           <td>
             <button type="button" class="secondary btnShow">表示</button>
             <button type="button" class="secondary btnDL">DL</button>
@@ -452,28 +541,39 @@ async function alignSubmit(ev){
           alignedPDBText = aligned;
         });
         trEl.querySelector('.btnDL').addEventListener('click', function(){
-          const blob = new Blob([aligned], {type:'chemical/x-pdb'});
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = (f.name.replace(/\.pdb$/i,'') + '_aligned.pdb');
-          a.click();
-          URL.revokeObjectURL(a.href);
+          var blob = new Blob([aligned], {type:'chemical/x-pdb'});
+          var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = f.name.replace(/\.pdb$/i,'') + '_aligned.pdb'; a.click(); URL.revokeObjectURL(a.href);
         });
         tbody.appendChild(trEl);
-        if(Object.keys(_alignedMap).length===1){ trEl.querySelector('.btnShow').click(); } // 最初は自動プレビュー
+        // 最初の1件は自動プレビュー
+        if(Object.keys(_alignedMap).length===1){ trEl.querySelector('.btnShow').click(); }
       } else {
-        const trEl=document.createElement('tr');
-        trEl.innerHTML = `<td>${f.webkitRelativePath || f.name}</td><td colspan="3" class="err">マッチ数が不足（残基番号/原子セット/チェーンを確認）</td>`;
-        tbody.appendChild(trEl);
+        var trEl=document.createElement('tr'); trEl.innerHTML = `<td>${f.name}</td><td colspan="3" class="err">対応マッチ数が不足またはチェーン対応が不正</td>`; tbody.appendChild(trEl);
       }
     }
   }catch(e){ console.error(e); showError('実行時エラー: '+ (e && e.message? e.message: e)); }
 }
+    var chainT_in = (fd.get('chain_target')||'A').split(',').map(function(s){return s.trim();}).filter(function(x){return !!x;});
+    var chainM_in = (fd.get('chain_mobile')||'A').split(',').map(function(s){return s.trim();}).filter(function(x){return !!x;});
+    var ok = await targetFile.text().then(function(targText){
+      return mobileFile.text().then(function(mobText){
+        return runAlignWithTexts(targText, mobText, {
+          chainT: chainT_in,
+          chainM: chainM_in,
+          mapMode: fd.get('chain_map_mode')||'auto2',
+          strategy: fd.get('match_strategy')||'resnum',
+          atomSet: fd.get('atom_set')||'bb',
+          minPairs: parseInt(fd.get('min_pairs')||'12')
+        });
+      });
+    });
+    if(!ok){ log('align failed'); }
+  }catch(e){ console.error(e); showError('実行時エラー: '+ (e && e.message? e.message: e)); }
+}
 
-/******************** デモ ********************/
 function runDemo(){
   // 最小の二量体デモ（A,Bチェーンで同一座標、モバイルは少し平行移動）
-  const pdbT = [
+  var pdbT = [
     'ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00 20.00           N',
     'ATOM      2  CA  ALA A   1       1.458   0.000   0.000  1.00 20.00           C',
     'ATOM      3  C   ALA A   1       2.000   1.300   0.000  1.00 20.00           C',
@@ -484,7 +584,7 @@ function runDemo(){
     'ATOM      8  O   ALA B   1       1.500   7.300   0.000  1.00 20.00           O',
     'END'
   ].join('\n');
-  const pdbM = [
+  var pdbM = [
     'ATOM      1  N   ALA A   1       3.000   0.500   0.200  1.00 20.00           N',
     'ATOM      2  CA  ALA A   1       4.458   0.500   0.200  1.00 20.00           C',
     'ATOM      3  C   ALA A   1       5.000   1.800   0.200  1.00 20.00           C',
@@ -495,6 +595,7 @@ function runDemo(){
     'ATOM      8  O   ALA B   1       4.500   7.800   0.200  1.00 20.00           O',
     'END'
   ].join('\n');
+  // UI値を強制
   document.querySelector('input[name="chain_target"]').value='A,B';
   document.querySelector('input[name="chain_mobile"]').value='A,B';
   document.querySelector('select[name="chain_map_mode"]').value='auto2';
@@ -505,16 +606,87 @@ function runDemo(){
   runAlignWithTexts(pdbT, pdbM, { chainT:['A','B'], chainM:['A','B'], mapMode:'auto2', strategy:'resnum', atomSet:'bb', minPairs:4 });
 }
 
-/******************** ダウンロード *************************/
-document.getElementById('btnDownload').addEventListener('click', ()=>{
+// ダウンロード
+var btn = document.getElementById('btnDownload');
+btn.addEventListener('click', function(){
   if(!alignedPDBText){ alert('先にアラインメントを実行してください'); return; }
-  const blob = new Blob([alignedPDBText], {type:'chemical/x-pdb'});
-  const a = document.createElement('a');
+  var blob = new Blob([alignedPDBText], {type:'chemical/x-pdb'});
+  var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'mobile_aligned.pdb';
   a.click();
   URL.revokeObjectURL(a.href);
 });
+// フォルダ選択トグル
+(function(){
+  var chk = document.getElementById('folderMode');
+  var mob = document.getElementById('pdb_mobile');
+  if(chk && mob){
+    chk.addEventListener('change', function(){
+      if(chk.checked){
+        mob.setAttribute('webkitdirectory','');
+      } else {
+        mob.removeAttribute('webkitdirectory');
+      }
+      // ファイル選択状態をクリア
+      mob.value = '';
+    });
+  }
+})();
 </script>
+
+<!-- ここから FASTA バッチ機能のスクリプト（既存と分けた独立ブロック） -->
+<script>
+function parseFastaText(text){
+  const entries=[]; let header=null, seq=[]; const lines=text.split(/\r?\n/);
+  for(const line of lines){
+    if(!line) continue;
+    if(line[0]==='>'){
+      if(header){ entries.push({header, seq:seq.join('').replace(/\s+/g,'').toUpperCase()}); }
+      header=line.substring(1).trim(); seq=[];
+    } else { seq.push(line.trim()); }
+  }
+  if(header){ entries.push({header, seq:seq.join('').replace(/\s+/g,'').toUpperCase()}); }
+  return entries;
+}
+function fastaBestOne(text){ const ents=parseFastaText(text); return ents.length? ents[0]: null; }
+function alnStats(alnA, alnB){
+  const n=alnA.length; let ident=0, gaps=0; for(let i=0;i<n;i++){ const a=alnA[i], b=alnB[i]; if(a==='-'||b==='-') gaps++; else if(a===b) ident++; }
+  return {aligned:n, identity: ident/n, gap: gaps/n};
+}
+async function runFastaBatch(){
+  const tFile = document.getElementById('fasta_template').files[0];
+  const many = Array.from(document.getElementById('fasta_many').files||[]);
+  const err = document.getElementById('fastaErr'); err.textContent='';
+  const tbody = document.getElementById('fastaTbody'); tbody.innerHTML='';
+  document.getElementById('fastaResult').style.display='none';
+  const btnCsv = document.getElementById('btnCsv'); btnCsv.disabled=true; btnCsv.onclick=null;
+  if(!tFile || many.length===0){ err.textContent='テンプレート1件と対象複数を選択してください。'; return; }
+  const tText = await tFile.text(); const tEnt = fastaBestOne(tText); if(!tEnt){ err.textContent='テンプレートFASTAが不正です。'; return; }
+  const results=[];
+  for(const f of many){
+    try{
+      const mText = await f.text(); const mEnt = fastaBestOne(mText); if(!mEnt){ throw new Error('空または不正'); }
+      const aln = needlemanWunsch(tEnt.seq, mEnt.seq, {match:2, mismatch:-1, gap:-2});
+      const st = alnStats(aln.a, aln.b);
+      let score=0; for(let i=0;i<aln.a.length;i++){ const a=aln.a[i], b=aln.b[i]; if(a==='-'||b==='-') score+=-2; else score+=(a===b?2:-1); }
+      const row = {file:f.name, lenT:tEnt.seq.length, lenM:mEnt.seq.length, aligned:st.aligned, identity:(st.identity*100), gap:(st.gap*100), score};
+      results.push(row);
+      const tr=document.createElement('tr');
+      tr.innerHTML = `<td>${row.file}</td><td>${row.lenT}</td><td>${row.lenM}</td><td>${row.aligned}</td><td>${row.identity.toFixed(1)}</td><td>${row.gap.toFixed(1)}</td><td>${row.score}</td>`;
+      tbody.appendChild(tr);
+    }catch(e){ const tr=document.createElement('tr'); tr.innerHTML=`<td>${f.name}</td><td colspan="6" class="err">読み込みに失敗: ${e&&e.message?e.message:e}</td>`; tbody.appendChild(tr); }
+  }
+  document.getElementById('fastaResult').style.display='';
+  btnCsv.disabled=false;
+  btnCsv.onclick=()=>{
+    const header=['file','lenT','lenM','aligned','identity_percent','gap_percent','score'];
+    const lines=[header.join(',')].concat(results.map(r=>[r.file,r.lenT,r.lenM,r.aligned,r.identity.toFixed(3),r.gap.toFixed(3),r.score].join(',')));
+    const blob = new Blob([lines.join('\n')], {type:'text/csv'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='fasta_batch_results.csv'; a.click(); URL.revokeObjectURL(a.href);
+  };
+}
+</script>
+
 </body>
 </html>
