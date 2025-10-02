@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StructAlign — ブラウザでのPDBアラインメント（二量体対応・デバッグ付き）</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <script src="https://unpkg.com/ngl@latest/dist/ngl.js"></script>
+  <style>
+    body { background: #ffffff; color: #111; }
+    header { margin-top: 1rem; }
+    .stage { width: 100%; height: 460px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; }
+    .muted { opacity: .8 }
+    code.kbd { background:#f3f4f6; padding:.15rem .35rem; border-radius:6px }
+    .err { color:#b00020; font-weight:600 }
+    pre#logbox { background:#fafafa; border:1px solid #eee; padding:8px; max-height:200px; overflow:auto; font-size:12px }
+    .btnrow { display:flex; gap:.5rem; align-items:center }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>StructAlign <small class="muted">— ブラウザ内での構造アラインメント (Kabsch法)</small></h1>
+      <p class="muted">2つの <code>.pdb</code> ファイルを読み込みます。処理はすべてローカル（ブラウザ）で実行され、サーバーへ送信されません。</p>
+    </header>
+
+    <form id="form" onsubmit="alignSubmit(event)">
+      <div class="grid">
+        <label>テンプレート PDB
+          <input type="file" name="pdb_target" accept=".pdb">
+        </label>
+        <label>アライン対象 PDB
+          <input type="file" name="pdb_mobile" accept=".pdb">
+        </label>
+      </div>
+      <div class="grid">
+        <label>テンプレートのチェーン（カンマ区切り可: 例 A,B）
+          <input name="chain_target" value="A,B" maxlength="20">
+        </label>
+        <label>対象のチェーン（カンマ区切り可: 例 A,B）
+          <input name="chain_mobile" value="A,B" maxlength="20">
+        </label>
+      </div>
+      <div class="grid">
+        <label>チェーン対応
+          <select name="chain_map_mode">
+            <option value="fixed">固定（順番通りに対応）</option>
+            <option value="auto2" selected>自動（二量体で最小RMSD）</option>
+          </select>
+        </label>
+      </div>
+      <details open>
+        <summary>詳細設定</summary>
+        <small class="muted">高相同性どうしは「残基番号が一致」+「Backbone」推奨です。</small>
+        <div class="grid">
+          <label>
+            戦略
+            <select name="match_strategy">
+              <option value="seq">配列アラインメント（簡易グローバル）</option>
+              <option value="resnum" selected>残基番号が一致するもの</option>
+              <option value="index">先頭N残基の順番</option>
+            </select>
+          </label>
+          <label>
+            原子集合
+            <select name="atom_set">
+              <option value="bb" selected>Backbone（N, CA, C, O）</option>
+              <option value="ca">Cα のみ</option>
+              <option value="heavy">重原子（H以外すべて）</option>
+            </select>
+          </label>
+          <label>
+            最低マッチ数
+            <input name="min_pairs" type="number" value="12" min="3" max="100000">
+          </label>
+        </div>
+      </details>
+      <div class="btnrow">
+        <button type="submit">アラインメント実行</button>
+        <button type="button" class="secondary" onclick="runDemo()">デモPDBで試す</button>
+        <button type="button" class="secondary" onclick="toggleLog()">デバッグログ表示/非表示</button>
+      </div>
+    </form>
+
+    <details id="logpanel" style="margin-top:6px; display:none">
+      <summary>デバッグログ</summary>
+      <pre id="logbox"></pre>
+    </details>
+
+    <article id="result" style="display:none">
+      <h3>結果</h3>
+      <p>
+        <b>マッチ数:</b> <span id="matched">0</span>
+        <b style="margin-left:1rem">RMSD (Å):</b> <span id="rmsd">–</span>
+      </p>
+      <div id="err" class="err"></div>
+      <div class="grid">
+        <div>
+          <h4>テンプレート構造</h4>
+          <div id="stageT" class="stage"></div>
+        </div>
+        <div>
+          <h4>アライン後の対象構造</h4>
+          <div id="stageM" class="stage"></div>
+        </div>
+      </div>
+      <div>
+        <button id="btnDownload" class="secondary">アライン後のPDBをダウンロード</button>
+      </div>
+      <p class="muted">ヒント: ビューア内で <code class="kbd">R</code> を押すとカメラ位置がリセットされます。</p>
+    </article>
+
+    <footer class="muted" style="margin:2rem 0">
+      <small>© 2025 — <a href="https://github.com/arose/ngl" target="_blank" rel="noreferrer">NGL.js</a> を使用。データは外部へ送信されません。</small>
+    </footer>
+  </main>
+
+<script>
+/******************** ログ ********************/
+function toggleLog(){ const p=document.getElementById('logpanel'); p.style.display = (p.style.display==='none')?'':'none'; }
+function log(){ const box=document.getElementById('logbox'); box.textContent += Array.from(arguments).join(' ')+'\n'; }
+function showError(msg){ const d=document.getElementById('err'); d.textContent = msg||''; log('ERROR:', msg); }
+
+/******************** PDB パーサ ********************/
+function parsePDB(pdbText) {
+  const atoms = []; // {name,resName,chainID,resSeq,iCode,x,y,z,element,line}
+  const lines = pdbText.split(/\r?\n/);
+  for (var i=0;i<lines.length;i++) {
+    var line = lines[i];
+    if (line && (line.indexOf('ATOM')===0 || line.indexOf('HETATM')===0)) {
+      var name = line.slice(12,16).trim();
+      var resName = line.slice(17,20).trim();
+      var chainID = line.slice(21,22).trim() || ' ';
+      var resSeq = parseInt(line.slice(22,26));
+      var iCode = line.slice(26,27).trim();
+      var x = parseFloat(line.slice(30,38));
+      var y = parseFloat(line.slice(38,46));
+      var z = parseFloat(line.slice(46,54));
+      var element = line.length >= 78 ? line.slice(76,78).trim() : '';
+      if(!element){ var c = name.trim()[0]; element = (c && c.toUpperCase()!=='H') ? c.toUpperCase() : 'H'; }
+      atoms.push({ name: name, resName: resName, chainID: chainID, resSeq: resSeq, iCode: iCode, x: x, y: y, z: z, element: element, line: line });
+    }
+  }
+  return atoms;
+}
+
+/******************** セレクタ ********************/
+function selectChainCA(atoms, chains) {
+  var set = new Set(Array.isArray(chains)? chains : [chains]);
+  var list = [];
+  var byKey = new Map();
+  for (var i=0;i<atoms.length;i++) {
+    var a = atoms[i];
+    if (chains && !set.has(a.chainID)) continue;
+    if (a.name === 'CA') {
+      var key = a.chainID + '|' + a.resSeq + ':' + a.iCode;
+      var xyz = [a.x,a.y,a.z];
+      list.push({ key: key, chainID:a.chainID, resSeq:a.resSeq, iCode:a.iCode, resName:a.resName, xyz: xyz });
+      byKey.set(key, xyz);
+    }
+  }
+  return { list: list, byKey: byKey };
+}
+
+function selectAtoms(atoms, chains, atomSet){
+  var set = new Set(Array.isArray(chains)? chains : [chains]);
+  var list=[]; var map=new Map();
+  function isBB(n){ return n==='N' || n==='CA' || n==='C' || n==='O'; }
+  for(var i=0;i<atoms.length;i++){
+    var a = atoms[i];
+    if(chains && !set.has(a.chainID)) continue;
+    if(atomSet==='ca' && a.name!=='CA') continue;
+    if(atomSet==='bb' && !isBB(a.name)) continue;
+    if(atomSet==='heavy' && a.element==='H') continue;
+    var resKey = a.chainID + '|' + a.resSeq + ':' + a.iCode;
+    var compKey = resKey + '|' + a.name;
+    var xyz=[a.x,a.y,a.z];
+    list.push({resKey:resKey, atomName:a.name, xyz:xyz});
+    map.set(compKey, xyz);
+  }
+  return { list:list, map:map };
+}
+
+/******************** 配列アライン（CA用の簡易NW） ********************/
+var threeToOne = { ALA:'A', ARG:'R', ASN:'N', ASP:'D', CYS:'C', GLU:'E', GLN:'Q', GLY:'G', HIS:'H', ILE:'I', LEU:'L', LYS:'K', MET:'M', PHE:'F', PRO:'P', SER:'S', THR:'T', TRP:'W', TYR:'Y', VAL:'V', SEC:'U', PYL:'O' };
+function seqFromCA(list) { var s=''; for(var i=0;i<list.length;i++){ var r=list[i]; s += (threeToOne[r.resName] || 'X'); } return s; }
+function needlemanWunsch(a, b, cfg){ cfg=cfg||{}; var match=cfg.match||2, mismatch=cfg.mismatch||-1, gap=cfg.gap||-2;
+  var n=a.length, m=b.length, i, j;
+  var dp = new Array(n+1), bt = new Array(n+1);
+  for(i=0;i<=n;i++){ dp[i]=new Array(m+1).fill(0); bt[i]=new Array(m+1).fill(0); }
+  for(i=1;i<=n;i++){ dp[i][0]=i*gap; bt[i][0]=1; }
+  for(j=1;j<=m;j++){ dp[0][j]=j*gap; bt[0][j]=2; }
+  for(i=1;i<=n;i++){
+    for(j=1;j<=m;j++){
+      var scoreDiag = dp[i-1][j-1] + (a[i-1]===b[j-1]?match:mismatch);
+      var scoreUp = dp[i-1][j] + gap;
+      var scoreLeft = dp[i][j-1] + gap;
+      var maxv = Math.max(scoreDiag, scoreUp, scoreLeft);
+      dp[i][j]=maxv; bt[i][j] = (maxv===scoreDiag)?0:(maxv===scoreUp?1:2);
+    }
+  }
+  var A=[], B=[]; i=n; j=m;
+  while(i>0 || j>0){
+    var move = bt[i][j];
+    if (i>0 && j>0 && move===0){ A.push(a[i-1]); B.push(b[j-1]); i--; j--; }
+    else if (i>0 && (j===0 || move===1)){ A.push(a[i-1]); B.push('-'); i--; }
+    else { A.push('-'); B.push(b[j-1]); j--; }
+  }
+  A.reverse(); B.reverse();
+  return { a:A.join(''), b:B.join('') };
+}
+
+/******************** Kabsch ********************/
+function meanVec(P){ var n=P.length, k, s=[0,0,0]; for(var i=0;i<n;i++){ var p=P[i]; s[0]+=p[0]; s[1]+=p[1]; s[2]+=p[2]; } return [s[0]/n,s[1]/n,s[2]/n]; }
+function subVec(a,b){ return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
+function matMul(A,B){ var out=[[0,0,0],[0,0,0],[0,0,0]]; for(var i=0;i<3;i++) for(var j=0;j<3;j++) for(var k=0;k<3;k++) out[i][j]+=A[i][k]*B[k][j]; return out; }
+function matVec(A,v){ return [A[0][0]*v[0]+A[0][1]*v[1]+A[0][2]*v[2], A[1][0]*v[0]+A[1][1]*v[1]+A[1][2]*v[2], A[2][0]*v[0]+A[2][1]*v[1]+A[2][2]*v[2]]; }
+function svd3x3(M){
+  function transpose(A){ return [[A[0][0],A[1][0],A[2][0]],[A[0][1],A[1][1],A[2][1]],[A[0][2],A[1][2],A[2][2]]]; }
+  function matMul3(A,B){ return matMul(A,B); }
+  var Mt = transpose(M); var MtM = matMul3(Mt,M);
+  function eigSym3(A){
+    var V=[[1,0,0],[0,1,0],[0,0,1]]; var B=[[A[0][0],A[0][1],A[0][2]],[A[1][0],A[1][1],A[1][2]],[A[2][0],A[2][1],A[2][2]]];
+    for(var iter=0; iter<32; iter++){
+      var p=0,q=1; var max=Math.abs(B[0][1]); var pairs=[[0,1],[0,2],[1,2]];
+      for(var idx=0; idx<pairs.length; idx++){ var i=pairs[idx][0], j=pairs[idx][1]; var v=Math.abs(B[i][j]); if(v>max){max=v;p=i;q=j;} }
+      if(max<1e-12) break;
+      var app=B[p][p], aqq=B[q][q], apq=B[p][q];
+      var phi=0.5*Math.atan2(2*apq, (aqq-app));
+      var c=Math.cos(phi), s=Math.sin(phi);
+      var Rp=[[1,0,0],[0,1,0],[0,0,1]]; Rp[p][p]=c; Rp[q][q]=c; Rp[p][q]=s; Rp[q][p]=-s;
+      var Rt=[[1,0,0],[0,1,0],[0,0,1]]; Rt[p][p]=c; Rt[q][q]=c; Rt[p][q]=-s; Rt[q][p]=s;
+      B = matMul3(matMul3(Rt,B),Rp);
+      V = matMul3(V,Rp);
+    }
+    return {vals:[B[0][0],B[1][1],B[2][2]], vecs:V};
+  }
+  var es = eigSym3(MtM);
+  var Svals = [Math.sqrt(Math.max(0,es.vals[0])), Math.sqrt(Math.max(0,es.vals[1])), Math.sqrt(Math.max(0,es.vals[2]))];
+  var V = [[es.vecs[0][0],es.vecs[0][1],es.vecs[0][2]],[es.vecs[1][0],es.vecs[1][1],es.vecs[1][2]],[es.vecs[2][0],es.vecs[2][1],es.vecs[2][2]]];
+  var Sinv = [[ Svals[0]?1/Svals[0]:0,0,0 ],[0,Svals[1]?1/Svals[1]:0,0],[0,0,Svals[2]?1/Svals[2]:0]];
+  var U = matMul(matMul(M,V),Sinv);
+  return {U:U, S:Svals, Vt: transpose(V)};
+}
+function kabsch(P, Q){
+  var Pc = meanVec(P), Qc = meanVec(Q);
+  var X = new Array(P.length), Y = new Array(Q.length);
+  for(var i=0;i<P.length;i++){ X[i]=subVec(P[i],Pc); Y[i]=subVec(Q[i],Qc); }
+  var H=[[0,0,0],[0,0,0],[0,0,0]];
+  for(var i2=0;i2<X.length;i2++){
+    var x=X[i2], y=Y[i2];
+    H[0][0]+=x[0]*y[0]; H[0][1]+=x[0]*y[1]; H[0][2]+=x[0]*y[2];
+    H[1][0]+=x[1]*y[0]; H[1][1]+=x[1]*y[1]; H[1][2]+=x[1]*y[2];
+    H[2][0]+=x[2]*y[0]; H[2][1]+=x[2]*y[1]; H[2][2]+=x[2]*y[2];
+  }
+  var sv = svd3x3(H);
+  var U=sv.U, Vt=sv.Vt;
+  var Rt=[[Vt[0][0],Vt[1][0],Vt[2][0]],[Vt[0][1],Vt[1][1],Vt[2][1]],[Vt[0][2],Vt[1][2],Vt[2][2]]];
+  var R = matMul(Vt, Rt);
+  var det = R[0][0]*(R[1][1]*R[2][2]-R[1][2]*R[2][1]) - R[0][1]*(R[1][0]*R[2][2]-R[1][2]*R[2][0]) + R[0][2]*(R[1][0]*R[2][1]-R[1][1]*R[2][0]);
+  if(det<0){ Vt[2][0]*=-1; Vt[2][1]*=-1; Vt[2][2]*=-1; R = matMul(Vt, Rt); }
+  var t = [ Qc[0] - (R[0][0]*Pc[0]+R[0][1]*Pc[1]+R[0][2]*Pc[2]),
+            Qc[1] - (R[1][0]*Pc[0]+R[1][1]*Pc[1]+R[1][2]*Pc[2]),
+            Qc[2] - (R[2][0]*Pc[0]+R[2][1]*Pc[1]+R[2][2]*Pc[2]) ];
+  return {R:R,t:t};
+}
+function rmsd(A,B){ var s=0; for(var i=0;i<A.length;i++){ var dx=A[i][0]-B[i][0], dy=A[i][1]-B[i][1], dz=A[i][2]-B[i][2]; s+=dx*dx+dy*dy+dz*dz; } return Math.sqrt(s/A.length); }
+
+/******************** マッチング（多チェーン対応） ********************/
+function matchPairs(strategy, caT, caM, atomSet, atomsT, atomsM, chainMap){
+  var T=[]; var M=[];
+  function pushPairsCA(mapT, mapM){
+    var keys = Array.from(mapT.keys()).filter(function(k){return mapM.has(k);}).sort(function(a,b){
+      var ca=a.split('|')[0], cb=b.split('|')[0];
+      var ai=parseInt(a.split('|')[1].split(':')[0]), bi=parseInt(b.split('|')[1].split(':')[0]);
+      return ca.localeCompare(cb) || (ai-bi);
+    });
+    for(var i=0;i<keys.length;i++){ var k=keys[i]; T.push(mapT.get(k)); M.push(mapM.get(k)); }
+  }
+  function pushPairsAtoms(selT, selM){
+    var keys = Array.from(selT.map.keys()).filter(function(k){return selM.map.has(k);}).sort(function(a,b){
+      var ca=a.split('|')[0], cb=b.split('|')[0];
+      var ia=a.split('|')[1], ib=b.split('|')[1];
+      var na=a.split('|')[2], nb=b.split('|')[2];
+      var ai=parseInt(ia.split(':')[0]), bi=parseInt(ib.split(':')[0]);
+      var r=ca.localeCompare(cb) || (ai-bi); if(r!==0) return r; return na.localeCompare(nb);
+    });
+    for(var j=0;j<keys.length;j++){ var k2=keys[j]; T.push(selT.map.get(k2)); M.push(selM.map.get(k2)); }
+  }
+  for(var m=0;m<chainMap.length;m++){
+    var ct=chainMap[m][0], cm=chainMap[m][1];
+    if(strategy==='resnum'){
+      if(atomSet==='ca'){
+        var mapT = new Map(caT.list.filter(function(r){return r.chainID===ct;}).map(function(r){return [r.chainID+'|'+r.resSeq+':'+r.iCode, r.xyz];}));
+        var mapM = new Map(caM.list.filter(function(r){return r.chainID===cm;}).map(function(r){return [r.chainID+'|'+r.resSeq+':'+r.iCode, r.xyz];}));
+        pushPairsCA(mapT, mapM);
+      }else{
+        var selT = selectAtoms(atomsT, [ct], atomSet);
+        var selM = selectAtoms(atomsM, [cm], atomSet);
+        pushPairsAtoms(selT, selM);
+      }
+    } else if (strategy==='index'){
+      var lt = caT.list.filter(function(r){return r.chainID===ct;});
+      var lm = caM.list.filter(function(r){return r.chainID===cm;});
+      var n = Math.min(lt.length, lm.length);
+      for(var i3=0;i3<n;i3++){ T.push(lt[i3].xyz); M.push(lm[i3].xyz); }
+    } else {
+      var lt2 = caT.list.filter(function(r){return r.chainID===ct;});
+      var lm2 = caM.list.filter(function(r){return r.chainID===cm;});
+      var seqT = seqFromCA(lt2), seqM = seqFromCA(lm2);
+      var aln = needlemanWunsch(seqT, seqM, {match:2, mismatch:-1, gap:-2});
+      var iT=0, iM=0;
+      for(var k=0;k<aln.a.length;k++){
+        var aa=aln.a[k], bb=aln.b[k];
+        if(aa!=='-' && bb!=='-'){ T.push(lt2[iT].xyz); M.push(lm2[iM].xyz); }
+        if(aa!=='-') iT++; if(bb!=='-') iM++;
+      }
+    }
+  }
+  return {T:T,M:M, count:T.length};
+}
+
+/******************** 変換 & 表示 ********************/
+function transformPDB(atoms, R, t){
+  function fmt8(val){ return val.toFixed(3).toString().padStart(8,' '); }
+  var out = [];
+  for(var i=0;i<atoms.length;i++){
+    var a=atoms[i];
+    var v=[a.x,a.y,a.z];
+    var tv=[ R[0][0]*v[0]+R[0][1]*v[1]+R[0][2]*v[2]+t[0],
+             R[1][0]*v[0]+R[1][1]*v[1]+R[1][2]*v[2]+t[1],
+             R[2][0]*v[0]+R[2][1]*v[1]+R[2][2]*v[2]+t[2] ];
+    var line = a.line;
+    line = line.substring(0,30) + fmt8(tv[0]) + fmt8(tv[1]) + fmt8(tv[2]) + line.substring(54);
+    out.push(line);
+  }
+  out.push('END');
+  return out.join('\n');
+}
+function renderNGL(divId, pdbText, color){
+  var stage = new NGL.Stage(divId, { backgroundColor: '#ffffff' });
+  stage.removeAllComponents();
+  var blob = new Blob([pdbText], {type:'text/plain'});
+  stage.loadFile(blob, {ext:'pdb'}).then(function(c){
+    c.addRepresentation('cartoon', {color:color, roughness:1.0});
+    c.autoView();
+  });
+  return stage;
+}
+
+/******************** 実行コア ********************/
+function runAlignWithTexts(targText, mobText, opts){
+  opts = opts||{}; showError(''); log('runAlignWithTexts start');
+  var chainT_in = opts.chainT || ['A','B'];
+  var chainM_in = opts.chainM || ['A','B'];
+  var mapMode   = opts.mapMode || 'auto2';
+  var strategy  = opts.strategy || 'resnum';
+  var atomSet   = opts.atomSet || 'bb';
+  var minPairs  = opts.minPairs || 12;
+
+  var atomsT = parsePDB(targText);
+  var atomsM = parsePDB(mobText);
+  log('atomsT:', atomsT.length, 'atomsM:', atomsM.length);
+  var caT = selectChainCA(atomsT, chainT_in);
+  var caM = selectChainCA(atomsM, chainM_in);
+  log('CA counts T:', caT.list.length, 'M:', caM.list.length);
+
+  function attemptWithMap(chainMap){
+    var res = matchPairs(strategy, caT, caM, atomSet, atomsT, atomsM, chainMap);
+    log('attempt map', JSON.stringify(chainMap), 'pairs=', res.count);
+    if(res.count < Math.max(3,minPairs)) return {ok:false};
+    var tr = kabsch(res.M, res.T);
+    var MT = new Array(res.M.length);
+    for(var i=0;i<res.M.length;i++){
+      var v=res.M[i];
+      MT[i] = [ tr.R[0][0]*v[0]+tr.R[0][1]*v[1]+tr.R[0][2]*v[2]+tr.t[0],
+                tr.R[1][0]*v[0]+tr.R[1][1]*v[1]+tr.R[1][2]*v[2]+tr.t[1],
+                tr.R[2][0]*v[0]+tr.R[2][1]*v[1]+tr.R[2][2]*v[2]+tr.t[2] ];
+    }
+    var r = rmsd(MT, res.T);
+    return {ok:true, R:tr.R, t:tr.t, count:res.count, rmsd:r};
+  }
+
+  var best = null, usedMap = null;
+  if(mapMode==='auto2' && chainT_in.length===2 && chainM_in.length===2){
+    var maps = [ [[chainT_in[0], chainM_in[0]],[chainT_in[1], chainM_in[1]]],
+                 [[chainT_in[0], chainM_in[1]],[chainT_in[1], chainM_in[0]]] ];
+    for(var mi=0; mi<maps.length; mi++){ var m=maps[mi]; var rs = attemptWithMap(m); if(rs.ok && (!best || rs.rmsd<best.rmsd)){ best=rs; usedMap=m; } }
+  } else {
+    var zipped=[]; for(var zi=0; zi<Math.min(chainT_in.length, chainM_in.length); zi++){ zipped.push([chainT_in[zi], chainM_in[zi]]); }
+    var m2 = zipped.length? zipped : [[chainT_in[0], chainM_in[0]]];
+    var rs2 = attemptWithMap(m2); if(rs2.ok){ best=rs2; usedMap=m2; }
+  }
+
+  if(!best){ showError('マッチ数が不足、またはチェーン対応が不正です。チェーン指定・戦略・原子集合を見直してください。'); return false; }
+
+  var alignedPDBTextLocal = transformPDB(atomsM, best.R, best.t);
+  document.getElementById('matched').textContent = best.count;
+  document.getElementById('rmsd').textContent = best.rmsd.toFixed(3);
+  document.getElementById('result').style.display = '';
+  renderNGL('stageT', targText, 0x2196f3);
+  renderNGL('stageM', alignedPDBTextLocal, 0xff7043);
+  alignedPDBText = alignedPDBTextLocal;
+  log('done. rmsd=', best.rmsd.toFixed(3));
+  return true;
+}
+
+/******************** UIハンドラ ********************/
+var alignedPDBText='';
+async function alignSubmit(ev){
+  ev.preventDefault(); showError('');
+  try{
+    var fd = new FormData(document.getElementById('form'));
+    var targetFile = fd.get('pdb_target');
+    var mobileFile = fd.get('pdb_mobile');
+    if(!targetFile || !mobileFile){ showError('PDBファイルを選択してください（または「デモPDBで試す」を押してください）'); return; }
+    var chainT_in = (fd.get('chain_target')||'A').split(',').map(function(s){return s.trim();}).filter(function(x){return !!x;});
+    var chainM_in = (fd.get('chain_mobile')||'A').split(',').map(function(s){return s.trim();}).filter(function(x){return !!x;});
+    var ok = await targetFile.text().then(function(targText){
+      return mobileFile.text().then(function(mobText){
+        return runAlignWithTexts(targText, mobText, {
+          chainT: chainT_in,
+          chainM: chainM_in,
+          mapMode: fd.get('chain_map_mode')||'auto2',
+          strategy: fd.get('match_strategy')||'resnum',
+          atomSet: fd.get('atom_set')||'bb',
+          minPairs: parseInt(fd.get('min_pairs')||'12')
+        });
+      });
+    });
+    if(!ok){ log('align failed'); }
+  }catch(e){ console.error(e); showError('実行時エラー: '+ (e && e.message? e.message: e)); }
+}
+
+function runDemo(){
+  // 最小の二量体デモ（A,Bチェーンで同一座標、モバイルは少し平行移動）
+  var pdbT = [
+    'ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00 20.00           N',
+    'ATOM      2  CA  ALA A   1       1.458   0.000   0.000  1.00 20.00           C',
+    'ATOM      3  C   ALA A   1       2.000   1.300   0.000  1.00 20.00           C',
+    'ATOM      4  O   ALA A   1       1.500   2.300   0.000  1.00 20.00           O',
+    'ATOM      5  N   ALA B   1       0.000   5.000   0.000  1.00 20.00           N',
+    'ATOM      6  CA  ALA B   1       1.458   5.000   0.000  1.00 20.00           C',
+    'ATOM      7  C   ALA B   1       2.000   6.300   0.000  1.00 20.00           C',
+    'ATOM      8  O   ALA B   1       1.500   7.300   0.000  1.00 20.00           O',
+    'END'
+  ].join('\n');
+  var pdbM = [
+    'ATOM      1  N   ALA A   1       3.000   0.500   0.200  1.00 20.00           N',
+    'ATOM      2  CA  ALA A   1       4.458   0.500   0.200  1.00 20.00           C',
+    'ATOM      3  C   ALA A   1       5.000   1.800   0.200  1.00 20.00           C',
+    'ATOM      4  O   ALA A   1       4.500   2.800   0.200  1.00 20.00           O',
+    'ATOM      5  N   ALA B   1       3.000   5.500   0.200  1.00 20.00           N',
+    'ATOM      6  CA  ALA B   1       4.458   5.500   0.200  1.00 20.00           C',
+    'ATOM      7  C   ALA B   1       5.000   6.800   0.200  1.00 20.00           C',
+    'ATOM      8  O   ALA B   1       4.500   7.800   0.200  1.00 20.00           O',
+    'END'
+  ].join('\n');
+  // UI値を強制
+  document.querySelector('input[name="chain_target"]').value='A,B';
+  document.querySelector('input[name="chain_mobile"]').value='A,B';
+  document.querySelector('select[name="chain_map_mode"]').value='auto2';
+  document.querySelector('select[name="match_strategy"]').value='resnum';
+  document.querySelector('select[name="atom_set"]').value='bb';
+  document.querySelector('input[name="min_pairs"]').value='4';
+  toggleLog();
+  runAlignWithTexts(pdbT, pdbM, { chainT:['A','B'], chainM:['A','B'], mapMode:'auto2', strategy:'resnum', atomSet:'bb', minPairs:4 });
+}
+
+// ダウンロード
+var btn = document.getElementById('btnDownload');
+btn.addEventListener('click', function(){
+  if(!alignedPDBText){ alert('先にアラインメントを実行してください'); return; }
+  var blob = new Blob([alignedPDBText], {type:'chemical/x-pdb'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mobile_aligned.pdb';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+</script>
+</body>
+</html>
