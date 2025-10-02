@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>StructAlign — ブラウザでのPDBアラインメント（二量体対応・デバッグ付き）</title>
+  <title>StructAlign — ブラウザでのPDBアラインメント（二量体対応・FASTAバッチ・デバッグ付き）</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
   <script src="https://unpkg.com/ngl@latest/dist/ngl.js"></script>
   <style>
@@ -15,6 +15,7 @@
     .err { color:#b00020; font-weight:600 }
     pre#logbox { background:#fafafa; border:1px solid #eee; padding:8px; max-height:200px; overflow:auto; font-size:12px }
     .btnrow { display:flex; gap:.5rem; align-items:center }
+    table { white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -86,6 +87,44 @@
       <summary>デバッグログ</summary>
       <pre id="logbox"></pre>
     </details>
+
+    <hr>
+
+    <section>
+      <h3>FASTAバッチ（配列アラインメント）</h3>
+      <p class="muted">テンプレートのFASTA 1つ + 複数のFASTAを対象に、ブラウザ内でグローバルアラインメント（Needleman–Wunsch）をまとめて実行し、同一性などをCSVで出力します。構造アラインではありません（座標は扱いません）。</p>
+      <div class="grid">
+        <label>テンプレート FASTA（1件）
+          <input type="file" id="fasta_template" accept=".fa,.fasta,.faa,.fsa,.txt">
+        </label>
+        <label>対象 FASTA（複数可）
+          <input type="file" id="fasta_many" accept=".fa,.fasta,.faa,.fsa,.txt" multiple>
+        </label>
+      </div>
+      <div class="btnrow">
+        <button type="button" onclick="runFastaBatch()">FASTAバッチ実行</button>
+        <button type="button" class="secondary" id="btnCsv" disabled>結果CSVをダウンロード</button>
+      </div>
+      <div id="fastaErr" class="err" style="margin-top:.5rem"></div>
+      <div id="fastaResult" style="display:none; margin-top:1rem">
+        <div style="overflow:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>ファイル名</th>
+                <th>長さ(T)</th>
+                <th>長さ(M)</th>
+                <th>整列長</th>
+                <th>同一性(%)</th>
+                <th>ギャップ率(%)</th>
+                <th>スコア</th>
+              </tr>
+            </thead>
+            <tbody id="fastaTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
 
     <article id="result" style="display:none">
       <h3>結果</h3>
@@ -479,5 +518,59 @@ btn.addEventListener('click', function(){
   URL.revokeObjectURL(a.href);
 });
 </script>
+
+<!-- ここから FASTA バッチ機能のスクリプト（既存と分けた独立ブロック） -->
+<script>
+function parseFastaText(text){
+  const entries=[]; let header=null, seq=[]; const lines=text.split(/\r?\n/);
+  for(const line of lines){
+    if(!line) continue;
+    if(line[0]==='>'){
+      if(header){ entries.push({header, seq:seq.join('').replace(/\s+/g,'').toUpperCase()}); }
+      header=line.substring(1).trim(); seq=[];
+    } else { seq.push(line.trim()); }
+  }
+  if(header){ entries.push({header, seq:seq.join('').replace(/\s+/g,'').toUpperCase()}); }
+  return entries;
+}
+function fastaBestOne(text){ const ents=parseFastaText(text); return ents.length? ents[0]: null; }
+function alnStats(alnA, alnB){
+  const n=alnA.length; let ident=0, gaps=0; for(let i=0;i<n;i++){ const a=alnA[i], b=alnB[i]; if(a==='-'||b==='-') gaps++; else if(a===b) ident++; }
+  return {aligned:n, identity: ident/n, gap: gaps/n};
+}
+async function runFastaBatch(){
+  const tFile = document.getElementById('fasta_template').files[0];
+  const many = Array.from(document.getElementById('fasta_many').files||[]);
+  const err = document.getElementById('fastaErr'); err.textContent='';
+  const tbody = document.getElementById('fastaTbody'); tbody.innerHTML='';
+  document.getElementById('fastaResult').style.display='none';
+  const btnCsv = document.getElementById('btnCsv'); btnCsv.disabled=true; btnCsv.onclick=null;
+  if(!tFile || many.length===0){ err.textContent='テンプレート1件と対象複数を選択してください。'; return; }
+  const tText = await tFile.text(); const tEnt = fastaBestOne(tText); if(!tEnt){ err.textContent='テンプレートFASTAが不正です。'; return; }
+  const results=[];
+  for(const f of many){
+    try{
+      const mText = await f.text(); const mEnt = fastaBestOne(mText); if(!mEnt){ throw new Error('空または不正'); }
+      const aln = needlemanWunsch(tEnt.seq, mEnt.seq, {match:2, mismatch:-1, gap:-2});
+      const st = alnStats(aln.a, aln.b);
+      let score=0; for(let i=0;i<aln.a.length;i++){ const a=aln.a[i], b=aln.b[i]; if(a==='-'||b==='-') score+=-2; else score+=(a===b?2:-1); }
+      const row = {file:f.name, lenT:tEnt.seq.length, lenM:mEnt.seq.length, aligned:st.aligned, identity:(st.identity*100), gap:(st.gap*100), score};
+      results.push(row);
+      const tr=document.createElement('tr');
+      tr.innerHTML = `<td>${row.file}</td><td>${row.lenT}</td><td>${row.lenM}</td><td>${row.aligned}</td><td>${row.identity.toFixed(1)}</td><td>${row.gap.toFixed(1)}</td><td>${row.score}</td>`;
+      tbody.appendChild(tr);
+    }catch(e){ const tr=document.createElement('tr'); tr.innerHTML=`<td>${f.name}</td><td colspan="6" class="err">読み込みに失敗: ${e&&e.message?e.message:e}</td>`; tbody.appendChild(tr); }
+  }
+  document.getElementById('fastaResult').style.display='';
+  btnCsv.disabled=false;
+  btnCsv.onclick=()=>{
+    const header=['file','lenT','lenM','aligned','identity_percent','gap_percent','score'];
+    const lines=[header.join(',')].concat(results.map(r=>[r.file,r.lenT,r.lenM,r.aligned,r.identity.toFixed(3),r.gap.toFixed(3),r.score].join(',')));
+    const blob = new Blob([lines.join('\n')], {type:'text/csv'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='fasta_batch_results.csv'; a.click(); URL.revokeObjectURL(a.href);
+  };
+}
+</script>
+
 </body>
 </html>
