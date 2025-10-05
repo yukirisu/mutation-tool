@@ -1,16 +1,23 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<title>FASTA Mutation Generator</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FASTA Mutation Generator (Pyodide) v2</title>
 <style>
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans JP", sans-serif;
+    line-height: 1.6;
+    margin: 24px;
+    color: #222;
+  }
+  h1 { margin-bottom: 8px; }
+  h2 { margin-top: 28px; }
   .drop-zone {
-    width: 500px;
-    padding: 20px;
-    border: 2px dashed #666;
-    border-radius: 10px;
+    border: 2px dashed #999;
+    padding: 24px;
     text-align: center;
-    color: #666;
+    border-radius: 8px;
     margin-bottom: 10px;
     cursor: pointer;
   }
@@ -52,7 +59,7 @@
 <hr>
 
 <h2>① 単一置換モード</h2>
-<label>置換する位置（カンマ区切り、最大3つまで）:</label><br>
+<label>置換する位置（カンマ区切り、個数制限なし）:</label><br>
 <input type="text" id="positions1" placeholder="例: 1,5,10"><br><br>
 <button id="runBtn1">変異を生成する（単一位置ごとに19配列）</button>
 <p id="status1"></p>
@@ -215,35 +222,46 @@ def replace_amino_acids_specified(input_content, mutations):
     let positions = document.getElementById(posInputId).value.split(",").map(x=>x.trim()).filter(x=>x!=="");
     let fileName = "";
 
-    if(funcName!=="replace_amino_acids_specified"){
-        const posNums = positions.map(x=>parseInt(x)).filter(x=>!isNaN(x));
-        if(posNums.length===0||posNums.length>3){ 
-            alert("置換する位置は1〜3個まで入力してください"); 
-            statusEl.innerText = "処理中止"; 
-            btn.disabled = false;
-            return; 
+    if (funcName !== "replace_amino_acids_specified") {
+      const posNums = positions.map(x => parseInt(x)).filter(x => !isNaN(x));
+      // ★ 単一置換モードは個数制限なし、全組合せモードは最大3つまで
+      if (funcName === "replace_amino_acids_single") {
+        if (posNums.length === 0) {
+          alert("置換する位置を1つ以上入力してください");
+          statusEl.innerText = "処理中止";
+          btn.disabled = false;
+          return;
         }
-        positions = posNums;
-        fileName = `${baseName}.fasta`; 
+      } else {
+        if (posNums.length === 0 || posNums.length > 3) {
+          alert("置換する位置は1〜3個まで入力してください");
+          statusEl.innerText = "処理中止";
+          btn.disabled = false;
+          return;
+        }
+      }
+      positions = posNums;
+      fileName = `${baseName}.fasta`;
     } else {
-        const mutations = positions.map(s=>{
-            const match = s.match(/(\d+)([ACDEFGHIKLMNPQRSTVWY])/i);
-            if(match) return [parseInt(match[1]), match[2].toUpperCase()];
-            return null;
-        }).filter(x=>x!==null);
-        if(mutations.length===0){ 
-            alert("正しい形式で指定してください（例: 101V,104F,179N）"); 
-            statusEl.innerText = "処理中止"; 
-            btn.disabled = false;
-            return; 
-        }
-        positions = mutations;
-        const mutationPart = mutations.map(m=>`${m[0]}${m[1]}`).join("_");
-        fileName = `${baseName}-${mutationPart}.fasta`;
+      const mutations = positions.map(s=>{
+        const match = s.match(/(\d+)([ACDEFGHIKLMNPQRSTVWY])/i);
+        if(match) return [parseInt(match[1]), match[2].toUpperCase()];
+        return null;
+      }).filter(x=>x!==null);
+      if(mutations.length===0){
+        alert("正しい形式で指定してください（例: 101V,104F,179N）");
+        statusEl.innerText = "処理中止";
+        btn.disabled = false;
+        return;
+      }
+      positions = mutations;
+      const mutationPart = mutations.map(m=>`${m[0]}${m[1]}`).join("_");
+      fileName = `${baseName}-${mutationPart}.fasta`;
     }
 
     const text = await inputFile.text();
-    const result = pyodide.runPython(`${funcName}("""${text}""", ${JSON.stringify(positions)})`);
+    const safeText = text.replace(/`/g, "\\`"); // 予防的にバッククォートをエスケープ
+    const result = pyodide.runPython(`${funcName}("""${safeText}""", ${JSON.stringify(positions)})`);
 
     const blob = new Blob([result], {type:"text/plain"});
     const url = URL.createObjectURL(blob);
