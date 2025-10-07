@@ -1,59 +1,85 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Mutation Tool Suite</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
 </head>
 
 <body class="bg-gray-50 text-gray-800 font-sans">
-  <header class="bg-blue-700 text-white shadow-lg">
-    <div class="max-w-5xl mx-auto px-6 py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between">
-      <h1 class="text-2xl font-bold">Mutation Tool Suite</h1>
-      <nav class="mt-3 sm:mt-0">
-        <a href="structurealignment.html" class="px-3 py-2 rounded hover:bg-blue-600 transition">構造アラインメント</a>
-        <a href="MutationGenerator.html" class="px-3 py-2 rounded hover:bg-blue-600 transition">変異生成</a>
+  <!-- Header -->
+  <header class="bg-white shadow-sm">
+    <div class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <img src="logo.png" alt="Mutation Tool Suite Logo" class="h-12 w-auto rounded-lg shadow-md" />
+        <h1 class="text-2xl font-bold text-blue-700">Mutation Tool Suite</h1>
+      </div>
+      <nav class="hidden sm:flex space-x-4">
+        <a href="structurealignment.html" class="text-gray-700 hover:text-blue-700 font-medium">構造アラインメント</a>
+        <a href="MutationGenerator.html" class="text-gray-700 hover:text-blue-700 font-medium">変異生成</a>
       </nav>
     </div>
   </header>
 
-  <main class="max-w-4xl mx-auto px-6 py-12">
+  <!-- Main content -->
+  <main class="max-w-5xl mx-auto px-6 py-12">
+    <!-- Hero Section -->
     <section class="text-center mb-12">
-      <h2 class="text-3xl font-bold mb-4">研究支援ツール群</h2>
+      <img src="logo.png" alt="Lab Logo" class="mx-auto w-40 h-40 rounded-full shadow-md mb-6" />
+      <h2 class="text-3xl font-bold mb-4 text-blue-800">構造情報に基づく変異設計ツール群</h2>
       <p class="text-gray-700 leading-relaxed">
-        本サイトでは、構造情報に基づく変異設計およびアラインメント解析をサポートするWebツールを提供しています。<br>
-        下記のツールから目的に応じて選択してください。
+        Mutation Tool Suiteは、タンパク質構造・配列解析を支援する研究用ウェブアプリ群です。<br />
+        構造アラインメント、変異生成、可視化を通じて、合理的なタンパク質設計をサポートします。
       </p>
     </section>
 
-    <div class="grid sm:grid-cols-2 gap-8">
-      <!-- Structure Alignment -->
+    <!-- Tools Section -->
+    <div class="grid md:grid-cols-2 gap-8 mb-16">
+      <!-- Structure Alignment Tool -->
       <div class="bg-white shadow-md rounded-2xl p-6 hover:shadow-lg transition">
-        <h3 class="text-xl font-semibold mb-3">構造アラインメントツール</h3>
+        <h3 class="text-xl font-semibold mb-3 text-blue-700">構造アラインメントツール</h3>
         <p class="text-gray-600 mb-4">
-          複数のPDB構造をアップロードして、自動的にアラインメントを行い、結果を可視化します。
+          複数の構造（PDB/mmCIF）を自動で整列し、重ね合わせ結果を可視化します。構造比較や変異効果の検証に利用できます。
         </p>
         <a href="structurealignment.html" class="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
-          ツールを開く
+          開く
         </a>
       </div>
 
       <!-- Mutation Generator -->
       <div class="bg-white shadow-md rounded-2xl p-6 hover:shadow-lg transition">
-        <h3 class="text-xl font-semibold mb-3">変異生成ツール</h3>
+        <h3 class="text-xl font-semibold mb-3 text-green-700">変異生成ツール</h3>
         <p class="text-gray-600 mb-4">
-          タンパク質配列または構造を基に、指定した残基に自動的に変異を導入することができます。
+          アミノ酸残基を指定して自動的に変異体構造を生成します。<br />
+          ドッキングやMD解析前の初期構造設計に最適です。
         </p>
         <a href="MutationGenerator.html" class="inline-block bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition">
-          ツールを開く
+          開く
         </a>
       </div>
     </div>
 
-    <section class="mt-16 text-center text-gray-500 text-sm">
-      <p>© 2025 Mutation Tool Suite | Developed by Yukirisu</p>
+    <!-- Outreach Section -->
+    <section class="text-center bg-blue-50 rounded-2xl p-8 shadow-inner mb-12">
+      <h3 class="text-2xl font-bold mb-4 text-blue-700">広報・活動紹介</h3>
+      <p class="text-gray-700 mb-6">最新の研究活動・開発情報は以下のリンクからご覧ください。</p>
+      <div class="flex justify-center space-x-6">
+        <a href="https://note.com/yukirisulove_" target="_blank" class="flex items-center bg-white shadow-md rounded-lg px-4 py-2 hover:bg-blue-100 transition">
+          <img src="https://note.com/favicon.ico" alt="note logo" class="w-6 h-6 mr-2" />
+          <span class="font-medium text-gray-700">note: yukirisulove_</span>
+        </a>
+        <a href="https://x.com/da5zp9esguiolrr?s=11" target="_blank" class="flex items-center bg-white shadow-md rounded-lg px-4 py-2 hover:bg-blue-100 transition">
+          <img src="https://abs.twimg.com/favicons/twitter.ico" alt="X logo" class="w-6 h-6 mr-2" />
+          <span class="font-medium text-gray-700">X (旧Twitter)</span>
+        </a>
+      </div>
     </section>
+
+    <!-- Footer -->
+    <footer class="text-center text-gray-500 text-sm mt-10">
+      <p>© 2025 Mutation Tool Suite | Developed by Yukirisu</p>
+    </footer>
   </main>
 </body>
 </html>
