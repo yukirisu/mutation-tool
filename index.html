@@ -26,7 +26,7 @@
     <section class="text-center mb-12">
       <img src="logo.png" alt="Lab Logo" class="mx-auto w-40 h-40 rounded-full shadow-md mb-6" />
       <h2 class="text-3xl font-bold mb-4 text-blue-800">構造情報に基づく変異設計ツール群</h2>
-      <p class="text-gray-700">構造アラインメント、変異生成、可視化を通じて合理的なタンパク質設計を支援する、らしい。</p>
+      <p class="text-gray-700">構造アラインメント、変異生成、可視化を通じて合理的なタンパク質設計を支援する。</p>
     </section>
 
     <!-- Tools -->
@@ -43,19 +43,55 @@
       </div>
     </div>
 
-    <!-- Latest Posts (JSON-rendered) -->
+    <!-- Outreach: URLs embedded plainly in dedicated boxes -->
     <section class="bg-blue-50 rounded-2xl p-8 shadow-inner mb-12">
-      <h3 class="text-2xl font-bold mb-4 text-blue-700">最新の投稿</h3>
-      <p class="text-gray-700 mb-6">note と X（旧Twitter）の最新を自動反映する。</p>
+      <h3 class="text-2xl font-bold mb-6 text-blue-700 text-center">研究活動・広報リンク</h3>
 
-      <div class="grid md:grid-cols-2 gap-8" id="latest-posts">
-        <!-- cards injected by JS -->
+      <div class="grid md:grid-cols-2 gap-8">
+        <!-- note box -->
+        <div class="bg-white rounded-2xl shadow-md p-6">
+          <div class="flex items-center mb-4">
+            <img src="https://note.com/favicon.ico" alt="note" class="w-6 h-6 mr-2" />
+            <h4 class="text-lg font-semibold text-gray-900">note</h4>
+          </div>
+          <p class="text-gray-700 mb-4">
+            最新の記事やお知らせは以下のURLから確認できる。
+          </p>
+          <div class="bg-gray-100 rounded-xl p-4 break-words">
+            <a href="https://note.com/yukirisulove_" target="_blank" class="text-blue-700 hover:underline">
+              https://note.com/yukirisulove_
+            </a>
+          </div>
+          <div class="mt-4 flex space-x-3">
+            <a href="https://note.com/yukirisulove_" target="_blank" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">開く</a>
+            <button onclick="copyToClipboard('https://note.com/yukirisulove_')" class="bg-white border px-4 py-2 rounded hover:bg-gray-50 transition">URLをコピー</button>
+          </div>
+        </div>
+
+        <!-- X box -->
+        <div class="bg-white rounded-2xl shadow-md p-6">
+          <div class="flex items-center mb-4">
+            <img src="https://abs.twimg.com/favicons/twitter.ico" alt="X" class="w-6 h-6 mr-2" />
+            <h4 class="text-lg font-semibold text-gray-900">X（旧Twitter）</h4>
+          </div>
+          <p class="text-gray-700 mb-4">
+            ポスト（投稿）は以下のURLから確認できる。
+          </p>
+          <div class="bg-gray-100 rounded-xl p-4 break-words">
+            <a href="https://x.com/da5zp9esguiolrr?s=11" target="_blank" class="text-blue-700 hover:underline">
+              https://x.com/da5zp9esguiolrr?s=11
+            </a>
+          </div>
+          <div class="mt-4 flex space-x-3">
+            <a href="https://x.com/da5zp9esguiolrr?s=11" target="_blank" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">開く</a>
+            <button onclick="copyToClipboard('https://x.com/da5zp9esguiolrr?s=11')" class="bg-white border px-4 py-2 rounded hover:bg-gray-50 transition">URLをコピー</button>
+          </div>
+        </div>
       </div>
 
-      <div class="text-center mt-6 space-x-4">
-        <a href="https://note.com/yukirisulove_" target="_blank" class="underline text-blue-700">noteを開く</a>
-        <a href="https://x.com/da5zp9esguiolrr?s=11" target="_blank" class="underline text-blue-700">Xを開く</a>
-      </div>
+      <p class="text-xs text-gray-500 mt-6 text-center">
+        埋め込み拒否や古いキャッシュの問題を避けるため、リンクカード表示にしている。
+      </p>
     </section>
 
     <footer class="text-center text-gray-500 text-sm mt-10">
@@ -64,58 +100,14 @@
   </main>
 
   <script>
-    async function loadJSON(url) {
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) throw new Error('Failed to load ' + url);
-      return res.json();
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        alert('URLをコピーした。');
+      }).catch(() => {
+        // 失敗時は選択→コピー案内
+        prompt('コピーできなかった。手動でコピーしてください:', text);
+      });
     }
-
-    function card({source, title, url, date, excerpt, thumbnail}) {
-      const d = new Date(date);
-      const ds = isNaN(d) ? '' : d.toLocaleString('ja-JP', { year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
-      return `
-        <div class="bg-white rounded-xl shadow-md overflow-hidden flex flex-col">
-          ${thumbnail ? `<img src="${thumbnail}" alt="" class="w-full h-40 object-cover">` : ''}
-          <div class="p-5 flex-1 flex flex-col">
-            <div class="text-xs text-gray-500 mb-1">${source}</div>
-            <h4 class="font-semibold text-gray-900 mb-2 line-clamp-2">${title}</h4>
-            <p class="text-sm text-gray-600 mb-4 line-clamp-3">${excerpt || ''}</p>
-            <div class="mt-auto flex items-center justify-between">
-              <span class="text-xs text-gray-500">${ds}</span>
-              <a href="${url}" target="_blank" class="text-blue-600 hover:underline">読む</a>
-            </div>
-          </div>
-        </div>`;
-    }
-
-    async function render() {
-      const container = document.getElementById('latest-posts');
-      try {
-        const [note, x] = await Promise.all([
-          loadJSON('./data/note.json'), // {items:[{title,url,date,excerpt,thumbnail}]}
-          loadJSON('./data/x.json')     // {items:[{title,url,date,excerpt,thumbnail}]}
-        ]);
-
-        // 各ソースから最大2件ずつ
-        const items = []
-          .concat((note.items || []).slice(0,2).map(i => ({...i, source:'note'})))
-          .concat((x.items || []).slice(0,2).map(i => ({...i, source:'X'})));
-
-        if (items.length === 0) {
-          container.innerHTML = `<div class="col-span-2 text-gray-600">まだ投稿が取得されていない。</div>`;
-          return;
-        }
-
-        // 日付で降順
-        items.sort((a,b) => new Date(b.date) - new Date(a.date));
-
-        container.innerHTML = items.map(card).join('');
-      } catch (e) {
-        container.innerHTML = `<div class="col-span-2 text-red-600">最新投稿の読み込みに失敗した。</div>`;
-        console.error(e);
-      }
-    }
-    render();
   </script>
 </body>
 </html>
