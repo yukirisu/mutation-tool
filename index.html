@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Yukirisu Mutation Tool Suite</title>
+  <title>Mutation Tool Suite</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+
+  <!-- AdSense Auto ads（発行者ID: ca-pub-9022390205190129）※headに1回だけ -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9022390205190129" crossorigin="anonymous"></script>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans">
   <!-- Header -->
@@ -12,11 +15,12 @@
     <div class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
       <div class="flex items-center space-x-3">
         <img src="logo.png" alt="Mutation Tool Suite Logo" class="h-12 w-auto rounded-lg shadow-md" />
-        <h1 class="text-2xl font-bold text-blue-700">Yukirisu Mutation Tool Suite</h1>
+        <h1 class="text-2xl font-bold text-blue-700">Mutation Tool Suite</h1>
       </div>
       <nav class="hidden sm:flex space-x-4">
         <a href="structurealignment.html" class="text-gray-700 hover:text-blue-700 font-medium">構造アラインメント</a>
         <a href="MutationGenerator.html" class="text-gray-700 hover:text-blue-700 font-medium">変異生成</a>
+        <a href="privacy.html" class="text-gray-700 hover:text-blue-700 font-medium">プライバシーポリシー</a>
       </nav>
     </div>
   </header>
@@ -26,11 +30,13 @@
     <section class="text-center mb-12">
       <img src="logo.png" alt="Lab Logo" class="mx-auto w-40 h-40 rounded-full shadow-md mb-6" />
       <h2 class="text-3xl font-bold mb-4 text-blue-800">構造情報に基づく変異設計ツール群</h2>
-      <p class="text-gray-700">構造アラインメント、変異生成、可視化を通じて合理的なタンパク質設計を支援する。</p>
+      <p class="text-gray-700">
+        Mutation Tool Suite は、構造アラインメント、変異生成、可視化を通じて合理的なタンパク質設計を支援する。
+      </p>
     </section>
 
     <!-- Tools -->
-    <div class="grid md:grid-cols-2 gap-8 mb-16">
+    <div class="grid md:grid-cols-2 gap-8 mb-10">
       <div class="bg-white shadow-md rounded-2xl p-6 hover:shadow-lg transition">
         <h3 class="text-xl font-semibold mb-3 text-blue-700">構造アラインメントツール</h3>
         <p class="text-gray-600 mb-4">複数の構造（PDB/mmCIF）を自動整列し、重ね合わせ結果を可視化する。</p>
@@ -43,71 +49,56 @@
       </div>
     </div>
 
-    <!-- Outreach: URLs embedded plainly in dedicated boxes -->
-    <section class="bg-blue-50 rounded-2xl p-8 shadow-inner mb-12">
-      <h3 class="text-2xl font-bold mb-6 text-blue-700 text-center">いろいろ報告とか雑談とか広報リンク</h3>
-
+    <!-- 広報リンク（静的） -->
+    <section class="bg-blue-50 rounded-2xl p-8 shadow-inner mb-10">
+      <h3 class="text-2xl font-bold mb-6 text-blue-700 text-center">研究活動・広報リンク</h3>
       <div class="grid md:grid-cols-2 gap-8">
-        <!-- note box -->
+        <!-- note -->
         <div class="bg-white rounded-2xl shadow-md p-6">
           <div class="flex items-center mb-4">
             <img src="https://note.com/favicon.ico" alt="note" class="w-6 h-6 mr-2" />
             <h4 class="text-lg font-semibold text-gray-900">note</h4>
           </div>
-          <p class="text-gray-700 mb-4">
-            最新の記事やお知らせは以下のURLから確認できる。
-          </p>
+          <p class="text-gray-700 mb-4">最新の記事やお知らせは以下のURLから確認する。</p>
           <div class="bg-gray-100 rounded-xl p-4 break-words">
-            <a href="https://note.com/yukirisulove_" target="_blank" class="text-blue-700 hover:underline">
-              https://note.com/yukirisulove_
-            </a>
-          </div>
-          <div class="mt-4 flex space-x-3">
-            <a href="https://note.com/yukirisulove_" target="_blank" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">開く</a>
-            <button onclick="copyToClipboard('https://note.com/yukirisulove_')" class="bg-white border px-4 py-2 rounded hover:bg-gray-50 transition">URLをコピー</button>
+            <a href="https://note.com/yukirisulove_" target="_blank" class="text-blue-700 hover:underline">https://note.com/yukirisulove_</a>
           </div>
         </div>
-
-        <!-- X box -->
+        <!-- X -->
         <div class="bg-white rounded-2xl shadow-md p-6">
           <div class="flex items-center mb-4">
             <img src="https://abs.twimg.com/favicons/twitter.ico" alt="X" class="w-6 h-6 mr-2" />
             <h4 class="text-lg font-semibold text-gray-900">X（旧Twitter）</h4>
           </div>
-          <p class="text-gray-700 mb-4">
-            ポスト（投稿）は以下のURLから確認できる。
-          </p>
+          <p class="text-gray-700 mb-4">ポストは以下のURLから確認する。</p>
           <div class="bg-gray-100 rounded-xl p-4 break-words">
-            <a href="https://x.com/da5zp9esguiolrr?s=11" target="_blank" class="text-blue-700 hover:underline">
-              https://x.com/da5zp9esguiolrr?s=11
-            </a>
-          </div>
-          <div class="mt-4 flex space-x-3">
-            <a href="https://x.com/da5zp9esguiolrr?s=11" target="_blank" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">開く</a>
-            <button onclick="copyToClipboard('https://x.com/da5zp9esguiolrr?s=11')" class="bg-white border px-4 py-2 rounded hover:bg-gray-50 transition">URLをコピー</button>
+            <a href="https://x.com/da5zp9esguiolrr?s=11" target="_blank" class="text-blue-700 hover:underline">https://x.com/da5zp9esguiolrr?s=11</a>
           </div>
         </div>
       </div>
+      <p class="text-xs text-gray-500 mt-6 text-center">埋め込み拒否や古いキャッシュの問題を避けるため、リンクカード表示にしている。</p>
+    </section>
 
-      <p class="text-xs text-gray-500 mt-6 text-center">
-        埋め込み拒否や古いキャッシュの問題を避けるため、リンクカード表示にしている。
-      </p>
+    <!-- 記事下の広告ユニット（誤クリック防止のため余白を十分に取る） -->
+    <section aria-label="広告" class="mb-12">
+      <div class="bg-white rounded-2xl shadow-md p-6">
+        <p class="text-sm text-gray-500 mb-2">広告</p>
+        <!-- ディスプレイ広告ユニット（審査通過後に data-ad-slot をあなたの値へ） -->
+        <ins class="adsbygoogle"
+             style="display:block"
+             data-ad-client="ca-pub-9022390205190129"
+             data-ad-slot="0000000000"
+             data-ad-format="auto"
+             data-full-width-responsive="true"></ins>
+        <script>
+          (adsbygoogle = window.adsbygoogle || []).push({});
+        </script>
+      </div>
     </section>
 
     <footer class="text-center text-gray-500 text-sm mt-10">
-      <p>© 2025 Mutation Tool Suite | Developed by Yukirisu</p>
+      <p>© 2025 Mutation Tool Suite | Developed by Yukirisu · <a href="privacy.html" class="underline text-blue-700">プライバシーポリシー</a></p>
     </footer>
   </main>
-
-  <script>
-    function copyToClipboard(text) {
-      navigator.clipboard.writeText(text).then(() => {
-        alert('URLをコピーした。');
-      }).catch(() => {
-        // 失敗時は選択→コピー案内
-        prompt('コピーできなかった。手動でコピーしてください:', text);
-      });
-    }
-  </script>
 </body>
 </html>
