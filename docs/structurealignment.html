@@ -37,6 +37,13 @@
     table{ width:100%; border-collapse:collapse; font-size:14px; } th,td{ border:1px solid var(--border); padding:8px 10px; text-align:left; }
     tr:hover{ background:#f9fafb; } .err{ color:#b00020; font-weight:600; margin-top:6px; }
     input[type="file"]{ display:none; }
+
+    /* --- ZIP / 保存 進捗バー --- */
+    .zipprog{ display:inline-flex; align-items:center; gap:8px; margin-left:8px; }
+    .zipprog[hidden]{ display:none; }
+    .zipprog .barwrap{ width:160px; height:8px; border:1px solid var(--border); border-radius:999px; overflow:hidden; background:#fff; }
+    .zipprog .bar{ height:100%; width:0%; background:var(--accent); transition:width .15s ease; }
+    .zipprog .label{ font-size:12px; color:var(--muted); min-width:12ch; text-align:right; }
   </style>
 </head>
 <body>
@@ -56,9 +63,16 @@
       <label class="switch"><input type="checkbox" id="folderMode" /> <span>フォルダを選ぶ</span></label>
       <span class="sep"></span>
       <button class="btn primary" id="btnRun">アラインメント実行</button>
-      <button class="btn" id="btnDownloadAll" disabled>一括DL (ZIP)</button>
+      <button class="btn" id="btnDownloadAll">一括DL (ZIP)</button>
+      <button class="btn" id="btnDownloadAllRaw">全件DL（フォルダ指定・非ZIP）</button>
       <button class="btn" id="btnDemo">デモ</button>
       <button class="btn" id="btnClear">表示クリア</button>
+      <span class="sep"></span>
+      <!-- 進捗バー（ZIP/保存で共用） -->
+      <span id="zipProgress" class="zipprog" hidden>
+        <span class="label" id="zipProgressLabel">0%</span>
+        <span class="barwrap"><span class="bar" id="zipProgressBar"></span></span>
+      </span>
     </div>
   </div>
 
@@ -103,8 +117,8 @@
     const STORE = new Map(); // id -> {name, text, rmsd, count}
     function setStatus(text, type=""){ statusBadge.textContent = text; statusBadge.className = "badge " + (type||""); }
     function showError(msg){ document.getElementById("err").textContent = msg || ""; setStatus(msg ? "Error" : "Ready", msg ? "err" : ""); }
-    function safeZipPath(name){ return name.replace(/[\\:*?"<>|]/g, "_"); }
-    function safeFileName(name){ return name.replace(/[\\/:*?"<>|]/g, "_"); }
+    function safeZipPath(name){ return String(name).replace(/[\\:*?"<>|]/g, "_"); }
+    function safeFileName(name){ return String(name).replace(/[\\/:*?"<>|]/g, "_"); }
     function updateBulkButton(){ document.getElementById("btnDownloadAll").disabled = (STORE.size === 0); }
 
     /* ===== File pickers ===== */
@@ -140,14 +154,34 @@
     });
     document.getElementById("btnDemo").addEventListener("click", runDemo);
     document.getElementById("btnDownloadAll").addEventListener("click", downloadAllZip);
+    document.getElementById("btnDownloadAllRaw").addEventListener("click", downloadAllRaw);
 
-    // イベント委譲（安全）
+    // 結果テーブルのイベント委譲
     tbody.addEventListener("click", async (ev)=>{
       const btn = ev.target.closest("button"); if(!btn) return;
       const id = btn.getAttribute("data-id"); if(!id || !STORE.has(id)) return;
       if(btn.classList.contains("btn-show")){ await previewId(id); }
       if(btn.classList.contains("btn-dl"))  { downloadId(id); }
     });
+
+    /* ===== 進捗バー（ZIP/保存 共用） ===== */
+    function showZipProgress(pct, text){
+      const wrap = document.getElementById("zipProgress");
+      const bar  = document.getElementById("zipProgressBar");
+      const lbl  = document.getElementById("zipProgressLabel");
+      wrap.hidden = false;
+      const p = Math.max(0, Math.min(100, pct|0));
+      bar.style.width = p + "%";
+      lbl.textContent = (text || (p + "%"));
+    }
+    function hideZipProgress(){
+      const wrap = document.getElementById("zipProgress");
+      wrap.hidden = true;
+      const bar  = document.getElementById("zipProgressBar");
+      const lbl  = document.getElementById("zipProgressLabel");
+      bar.style.width = "0%";
+      lbl.textContent = "0%";
+    }
 
     /* ===== Core: Alignment ===== */
     async function alignSubmit(){
@@ -231,22 +265,6 @@
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(a.href);
     }
-    async function downloadAllZip(){
-      if(STORE.size===0){ alert("ダウンロード対象がありません"); return; }
-      setStatus("Zipping...","warn");
-      const zip = new JSZip();
-      for(const [,item] of STORE){
-        const pathInZip = safeZipPath(item.name.endsWith(".pdb") ? item.name.slice(0,-4) : item.name) + "_aligned.pdb";
-        zip.file(pathInZip, item.text);
-      }
-      const blob = await zip.generateAsync({type:"blob"});
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "aligned_structures.zip";
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(a.href);
-      setStatus("ZIP Ready","good");
-    }
 
     /* ===== PDB parsing ===== */
     function parseAllAtoms(text){
@@ -267,7 +285,6 @@
       return atoms;
     }
     function extractCA(atomsAll){
-      // CA のみ（Chain + ResNo を使った対応が取りやすい）
       return atomsAll.filter(a => a.name === "CA");
     }
 
@@ -283,28 +300,26 @@
       if(n < 3){
         return { rmsd: Number.NaN, transformedText: mobAll.map(a=>a.line).join("\n"), count: n };
       }
-      // 対応はインデックス順（高相同性想定）。必要なら chain/resno マッチに変更可。
+      // 対応はインデックス順（必要に応じて chain/resno マッチに変更可）
       const P = new Array(n); const Q = new Array(n);
       for(let i=0;i<n;i++){ P[i]=[tmplCA[i].x,tmplCA[i].y,tmplCA[i].z]; Q[i]=[mobCA[i].x,mobCA[i].y,mobCA[i].z]; }
 
       const Pc = mean(P), Qc = mean(Q);
       const X = subAll(P, Pc), Y = subAll(Q, Qc);
       const H = mul(tr(X), Y);                 // 3x3
-      const {U,S,V} = svdFromHtH(H);           // ちゃんと U = H V S^{-1} を求める
-      let R = mul(U, tr(V));                   // ★ mobile -> template
+      const {U,S,V} = svdFromHtH(H);
+      let R = mul(U, tr(V));                   // mobile -> template
       if(det3(R) < 0){                         // 反転対策
         V[0][2]*=-1; V[1][2]*=-1; V[2][2]*=-1;
         R = mul(U, tr(V));
       }
       const t = subV(Pc, mv(R, Qc));           // t = Pc - R*Qc
 
-      // CA RMSD（評価用）
+      // CA RMSD（評価）
       const QtoP = addAll(mulAll(Q, R), t);    // R*Q + t
       const r = rms(QtoP, P);
 
       // 全原子に適用：m' = R*m + t
-      // mobAll は元の行インデックスを持っているので、その行の座標欄だけ上書きする
-      const lines = mobAll.length ? mobAll[0].line.split(/\r?\n/) : []; // 使わない（安全用）
       const out = [];
       for(const a of mobAll){
         const m = [a.x, a.y, a.z];
@@ -368,6 +383,131 @@
                      [V[2][0]/(Sdiag[0]||1e-12), V[2][1]/(Sdiag[1]||1e-12), V[2][2]/(Sdiag[2]||1e-12)]];
       const U = mul(H, VinvS);
       return {U, S:Sdiag, V};
+    }
+
+    /* ===== ZIP一括DL（進捗バー表示） ===== */
+    async function downloadAllZip(){
+      if(STORE.size===0){ alert("ダウンロード対象がありません"); return; }
+
+      setStatus("Zipping...","warn");
+      showZipProgress(0, "0%");
+
+      const zip = new JSZip();
+      for(const [,item] of STORE){
+        const pathInZip = safeZipPath(item.name.endsWith(".pdb") ? item.name.slice(0,-4) : item.name) + "_aligned.pdb";
+        zip.file(pathInZip, item.text);
+      }
+
+      try{
+        const blob = await zip.generateAsync(
+          { type:"blob", streamFiles:true },
+          (meta) => {
+            const pct = Math.min(100, Math.max(0, meta.percent||0));
+            const label = `圧縮中… ${pct.toFixed(1)}%` + (meta.currentFile ? ` (${meta.currentFile})` : "");
+            showZipProgress(pct, label);
+          }
+        );
+
+        showZipProgress(100, "ダウンロード準備中…");
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "aligned_structures.zip";
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(a.href);
+
+        setStatus("ZIP Ready","good");
+      }catch(err){
+        console.error(err);
+        showError("ZIP作成に失敗しました: " + (err && err.message ? err.message : err));
+      }finally{
+        setTimeout(()=>{ hideZipProgress(); }, 600);
+      }
+    }
+
+    /* ===== 非ZIP 一括保存（フォルダ指定 & フォールバック） ===== */
+    // 相対パス維持のための分解（\ → / 正規化）
+    function splitPathLike(name){
+      const raw = String(name).replace(/\\/g, '/');
+      return raw.split('/').filter(Boolean);
+    }
+    async function ensureSubdir(rootHandle, parts){
+      let dir = rootHandle;
+      for(const p of parts){
+        dir = await dir.getDirectoryHandle(p, { create: true });
+      }
+      return dir;
+    }
+    function toAlignedName(base){
+      const b = base.endsWith(".pdb") ? base.slice(0,-4) : base;
+      return safeZipPath(b) + "_aligned.pdb";
+    }
+
+    async function downloadAllRaw(){
+      if(STORE.size===0){ alert("ダウンロード対象がありません"); return; }
+
+      setStatus("Saving...","warn");
+      showZipProgress(0, "保存準備中…");
+
+      const canPickDir = "showDirectoryPicker" in window;
+      if(canPickDir){
+        try{
+          const dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+          let i = 0, n = STORE.size;
+
+          for(const [,item] of STORE){
+            i++;
+            const parts = splitPathLike(item.name);
+            const fileBase = parts.pop() || "file.pdb";
+            const relDirs  = parts;
+            const targetDir = await ensureSubdir(dirHandle, relDirs);
+            const fileName = toAlignedName(fileBase);
+            const fileHandle = await targetDir.getFileHandle(fileName, { create:true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(item.text);
+            await writable.close();
+
+            const pct = (i/n)*100;
+            showZipProgress(pct, `保存中… ${i}/${n}`);
+          }
+
+          setStatus("All files saved","good");
+          setTimeout(()=>{ hideZipProgress(); }, 600);
+          return;
+        }catch(err){
+          console.warn("FSA失敗: ", err);
+          if(err && (err.name==="AbortError")){ hideZipProgress(); setStatus("Cancelled"); return; }
+          // それ以外はフォールバックへ
+        }
+      }
+
+      // フォールバック：通常のダウンロード（既定DLフォルダ）
+      try{
+        let i = 0, n = STORE.size;
+        for(const [,item] of STORE){
+          i++;
+          const parts = splitPathLike(item.name);
+          const base  = parts.pop() || "file.pdb";
+          const rel   = parts.length ? parts.join("--") + "--" : "";
+          const fileName = rel + toAlignedName(base);
+
+          const blob = new Blob([item.text], {type:"chemical/x-pdb"});
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = fileName;
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(a.href);
+
+          const pct = (i/n)*100;
+          showZipProgress(pct, `保存中（通常DL）… ${i}/${n}`);
+          await new Promise(r=>setTimeout(r, 120)); // 連続DL緩和
+        }
+        setStatus("All files downloaded","good");
+      }catch(err){
+        console.error(err);
+        showError("ダウンロードに失敗しました: " + (err && err.message ? err.message : err));
+      }finally{
+        setTimeout(()=>{ hideZipProgress(); }, 600);
+      }
     }
 
     /* ===== Demo ===== */
