@@ -1,1 +1,418 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9022390205190129"
+     crossorigin="anonymous"></script>
+  <title>構造アラインメントビューア（CA対応・全原子変換）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- NGL.js -->
+  <script src="https://cdn.jsdelivr.net/npm/ngl@2.0.0-dev.37/dist/ngl.js"></script>
+  <!-- JSZip（ZIP一括DL用） -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <style>
+    :root{ --bg:#ffffff; --fg:#111; --muted:#6b7280; --accent:#2563eb; --border:#e5e7eb; }
+    *{ box-sizing:border-box; } html,body{ height:100%; }
+    body{ margin:0; background:var(--bg); color:var(--fg);
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Sans",sans-serif; }
+    .taskbar{ position:sticky; top:0; z-index:50; background:var(--bg);
+      border-bottom:1px solid var(--border); padding:8px 12px;
+      display:flex; align-items:center; justify-content:space-between; gap:8px;}
+    .brand{ font-weight:700; } .muted{ color:var(--muted); }
+    .btn{ display:inline-flex; align-items:center; gap:6px;
+      border:1px solid var(--border); background:#fff; color:#111;
+      border-radius:8px; padding:8px 12px; cursor:pointer; font-weight:600; }
+    .btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+    .btn:disabled{ opacity:.5; cursor:not-allowed; }
+    .switch{ display:inline-flex; align-items:center; gap:6px; color:var(--muted);
+      padding:4px 8px; border-radius:8px; border:1px dashed var(--border); background:#fff; }
+    .badge{ display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid var(--border); background:#fff; font-size:12px; }
+    .badge.good{ border-color:#10b981; } .badge.warn{ border-color:#f59e0b; } .badge.err{ border-color:#ef4444; color:#b91c1c; }
+    .sep{ width:1px; height:28px; background:var(--border); margin:0 4px; }
+    .container{ max-width:1200px; margin:16px auto; padding:0 16px 48px; }
+    h1{ font-size:20px; margin:16px 0 8px; } p.desc{ margin:0 0 12px; color:var(--muted); }
+    .grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; } @media (max-width:960px){ .grid{ grid-template-columns:1fr; } }
+    .panel{ background:#fff; border:1px solid var(--border); border-radius:12px; padding:12px; }
+    .stage{ width:100%; height:520px; border:1px solid var(--border); border-radius:12px; background:#fff; }
+    table{ width:100%; border-collapse:collapse; font-size:14px; } th,td{ border:1px solid var(--border); padding:8px 10px; text-align:left; }
+    tr:hover{ background:#f9fafb; } .err{ color:#b00020; font-weight:600; margin-top:6px; }
+    input[type="file"]{ display:none; }
+  </style>
+</head>
+<body>
 
+  <!-- Taskbar -->
+  <div class="taskbar">
+    <div>
+      <span class="brand">StructAlign</span>
+      <span class="muted">— CA対応・全原子を剛体変換</span>
+      <span id="statusBadge" class="badge">Ready</span>
+    </div>
+    <div>
+      <input type="file" id="pdb_template" accept=".pdb" />
+      <input type="file" id="pdb_files" accept=".pdb" multiple />
+      <button class="btn" id="btnPickTemplate">テンプレート選択</button>
+      <button class="btn" id="btnPickInputs">対象ファイル選択</button>
+      <label class="switch"><input type="checkbox" id="folderMode" /> <span>フォルダを選ぶ</span></label>
+      <span class="sep"></span>
+      <button class="btn primary" id="btnRun">アラインメント実行</button>
+      <button class="btn" id="btnDownloadAll" disabled>一括DL (ZIP)</button>
+      <button class="btn" id="btnDemo">デモ</button>
+      <button class="btn" id="btnClear">表示クリア</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <h1>構造アラインメント（配列は不使用／CAで対応付け／全原子変換）</h1>
+    <p class="desc">テンプレートPDB 1件と複数PDB（ファイル/フォルダ）をローカルで読み込み、CA原子で対応付け → 剛体変換を求め、モデル中の全原子に適用します。出力PDBは座標欄のみ上書きし、それ以外は保持します。</p>
+
+    <div class="grid">
+      <div class="panel">
+        <h3 style="margin:0 0 8px;">テンプレート</h3>
+        <div id="stageT" class="stage"></div>
+      </div>
+      <div class="panel">
+        <h3 style="margin:0 0 8px;">アライン後（対象）</h3>
+        <div id="stageM" class="stage"></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px;">
+      <h3 style="margin:0 0 8px;">結果</h3>
+      <div class="muted" style="margin-bottom:8px;">
+        <span>対応CA数: <b id="matched">0</b></span>
+        <span style="margin-left:12px;">RMSD (Å): <b id="rmsd">–</b></span>
+      </div>
+      <div id="err" class="err"></div>
+      <div style="overflow:auto;">
+        <table>
+          <thead><tr><th>ファイル</th><th>RMSD(Å)</th><th>操作</th></tr></thead>
+          <tbody id="resultsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ===== Global state ===== */
+    const stageT = new NGL.Stage("stageT", { backgroundColor: "#ffffff" });
+    const stageM = new NGL.Stage("stageM", { backgroundColor: "#ffffff" });
+    const statusBadge = document.getElementById("statusBadge");
+
+    let ID_SEQ = 0;
+    const STORE = new Map(); // id -> {name, text, rmsd, count}
+    function setStatus(text, type=""){ statusBadge.textContent = text; statusBadge.className = "badge " + (type||""); }
+    function showError(msg){ document.getElementById("err").textContent = msg || ""; setStatus(msg ? "Error" : "Ready", msg ? "err" : ""); }
+    function safeZipPath(name){ return name.replace(/[\\:*?"<>|]/g, "_"); }
+    function safeFileName(name){ return name.replace(/[\\/:*?"<>|]/g, "_"); }
+    function updateBulkButton(){ document.getElementById("btnDownloadAll").disabled = (STORE.size === 0); }
+
+    /* ===== File pickers ===== */
+    const inpTemplate = document.getElementById("pdb_template");
+    const inpFiles    = document.getElementById("pdb_files");
+    const chkFolder   = document.getElementById("folderMode");
+    const tbody       = document.getElementById("resultsBody");
+
+    document.getElementById("btnPickTemplate").addEventListener("click", ()=> inpTemplate.click());
+    document.getElementById("btnPickInputs").addEventListener("click", ()=> inpFiles.click());
+    chkFolder.addEventListener("change", ()=>{
+      if(chkFolder.checked){ inpFiles.setAttribute("webkitdirectory",""); inpFiles.removeAttribute("multiple"); }
+      else{ inpFiles.removeAttribute("webkitdirectory"); inpFiles.setAttribute("multiple",""); }
+      inpFiles.value = "";
+    });
+    inpTemplate.addEventListener("change", ()=>{
+      if(inpTemplate.files.length){
+        setStatus(`Template: ${inpTemplate.files[0].name}`,"good");
+        loadTextFile(inpTemplate.files[0]).then(t=> renderPDB(stageT, t, "#1f77b4"));
+      } else setStatus("Ready");
+    });
+    inpFiles.addEventListener("change", ()=>{
+      const n = Array.from(inpFiles.files||[]).filter(f=>/\.pdb$/i.test(f.name)).length;
+      setStatus(n>0?`Targets: ${n} files`:"Ready", n>0?"good":"");
+    });
+
+    document.getElementById("btnRun").addEventListener("click", alignSubmit);
+    document.getElementById("btnClear").addEventListener("click", ()=>{
+      stageT.removeAllComponents(); stageM.removeAllComponents();
+      tbody.innerHTML = ""; STORE.clear(); ID_SEQ=0;
+      document.getElementById("matched").textContent="0"; document.getElementById("rmsd").textContent="–";
+      showError(""); setStatus("Cleared"); updateBulkButton();
+    });
+    document.getElementById("btnDemo").addEventListener("click", runDemo);
+    document.getElementById("btnDownloadAll").addEventListener("click", downloadAllZip);
+
+    // イベント委譲（安全）
+    tbody.addEventListener("click", async (ev)=>{
+      const btn = ev.target.closest("button"); if(!btn) return;
+      const id = btn.getAttribute("data-id"); if(!id || !STORE.has(id)) return;
+      if(btn.classList.contains("btn-show")){ await previewId(id); }
+      if(btn.classList.contains("btn-dl"))  { downloadId(id); }
+    });
+
+    /* ===== Core: Alignment ===== */
+    async function alignSubmit(){
+      try{
+        showError("");
+        if(!inpTemplate.files.length){ showError("テンプレートPDBを選択してください"); return; }
+        if(!inpFiles.files.length){ showError("アライン対象（ファイル/フォルダ）を選択してください"); return; }
+
+        setStatus("Running...","warn");
+        const tmplText = await loadTextFile(inpTemplate.files[0]);
+        const atomsT_all = parseAllAtoms(tmplText);
+        const atomsT_CA  = extractCA(atomsT_all);
+        await renderPDB(stageT, tmplText, "#1f77b4");
+
+        STORE.clear(); ID_SEQ=0; tbody.innerHTML = "";
+
+        const files = Array.from(inpFiles.files||[]).filter(f=>/\.pdb$/i.test(f.name));
+        for(const f of files){
+          const text = await loadTextFile(f);
+          const atomsM_all = parseAllAtoms(text);
+          const atomsM_CA  = extractCA(atomsM_all);
+
+          const result = alignByCA_TransformAll(atomsT_CA, atomsM_CA, atomsM_all);
+          const { rmsd, transformedText, count } = result;
+
+          const display = (f.webkitRelativePath && f.webkitRelativePath.length) ? f.webkitRelativePath : f.name;
+          const id = "k"+(++ID_SEQ);
+          STORE.set(id, {name: display, text: transformedText, rmsd, count});
+
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${display}</td>
+            <td>${Number.isFinite(rmsd) ? rmsd.toFixed(3) : "—"}</td>
+            <td style="display:flex; gap:8px;">
+              <button class="btn btn-dl"   type="button" data-id="${id}">DL</button>
+              <button class="btn btn-show" type="button" data-id="${id}">表示</button>
+            </td>`;
+          tbody.appendChild(tr);
+
+          if (STORE.size === 1){
+            await previewId(id);
+            document.getElementById("matched").textContent = count;
+            document.getElementById("rmsd").textContent = Number.isFinite(rmsd) ? rmsd.toFixed(3) : "—";
+          }
+        }
+        setStatus("Done","good"); updateBulkButton();
+      }catch(e){
+        console.error(e);
+        showError("実行時エラー: " + (e && e.message ? e.message : e));
+      }
+    }
+
+    /* ===== File & Viewer ===== */
+    function loadTextFile(file){
+      return new Promise((resolve,reject)=>{
+        const fr = new FileReader(); fr.onload = ()=>resolve(fr.result); fr.onerror=reject; fr.readAsText(file);
+      });
+    }
+    function renderPDB(stage, pdbText, colorHex){
+      stage.removeAllComponents();
+      const blob = new Blob([pdbText], {type:"chemical/x-pdb"});
+      return stage.loadFile(blob, {ext:"pdb"}).then(o=>{
+        o.addRepresentation("cartoon", { colorValue: colorHex });
+        o.autoView();
+      }).catch(err=>{
+        console.error(err);
+        showError("表示に失敗しました（NGL 読み込みエラー）");
+      });
+    }
+    async function previewId(id){
+      const item = STORE.get(id); if(!item) return;
+      await renderPDB(stageM, item.text, "#ef4444");
+    }
+    function downloadId(id){
+      const item = STORE.get(id); if(!item){ alert("アライン後PDBが見つかりません"); return; }
+      const blob = new Blob([item.text], {type:"chemical/x-pdb"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      const base = safeFileName(item.name.endsWith(".pdb") ? item.name.slice(0,-4) : item.name);
+      a.download = `${base}_aligned.pdb`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(a.href);
+    }
+    async function downloadAllZip(){
+      if(STORE.size===0){ alert("ダウンロード対象がありません"); return; }
+      setStatus("Zipping...","warn");
+      const zip = new JSZip();
+      for(const [,item] of STORE){
+        const pathInZip = safeZipPath(item.name.endsWith(".pdb") ? item.name.slice(0,-4) : item.name) + "_aligned.pdb";
+        zip.file(pathInZip, item.text);
+      }
+      const blob = await zip.generateAsync({type:"blob"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "aligned_structures.zip";
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(a.href);
+      setStatus("ZIP Ready","good");
+    }
+
+    /* ===== PDB parsing ===== */
+    function parseAllAtoms(text){
+      const atoms=[]; const lines = text.split(/\r?\n/);
+      for(let idx=0; idx<lines.length; idx++){
+        const line = lines[idx];
+        if(!line) continue;
+        if(line.startsWith("ATOM") || line.startsWith("HETATM")){
+          const name = line.slice(12,16).trim();
+          const chain= line.slice(21,22);
+          const resno= parseInt(line.slice(22,26),10);
+          const x = parseFloat(line.slice(30,38));
+          const y = parseFloat(line.slice(38,46));
+          const z = parseFloat(line.slice(46,54));
+          atoms.push({ name, chain, resno, x, y, z, lineIndex: idx, line });
+        }
+      }
+      return atoms;
+    }
+    function extractCA(atomsAll){
+      // CA のみ（Chain + ResNo を使った対応が取りやすい）
+      return atomsAll.filter(a => a.name === "CA");
+    }
+
+    /* ===== Alignment by CA, apply to ALL atoms =====
+       - H = X^T Y （X: template-CA centered, Y: mobile-CA centered）
+       - SVD: H = U S V^T
+       - 回す向き：mobile -> template なので R = U V^T,  t = Pc - R*Qc
+       - これを **全原子** m に m' = R*m + t として適用
+       - 出力は座標欄(30–54桁)のみ上書き、それ以外は元行を保持
+    */
+    function alignByCA_TransformAll(tmplCA, mobCA, mobAll){
+      const n = Math.min(tmplCA.length, mobCA.length);
+      if(n < 3){
+        return { rmsd: Number.NaN, transformedText: mobAll.map(a=>a.line).join("\n"), count: n };
+      }
+      // 対応はインデックス順（高相同性想定）。必要なら chain/resno マッチに変更可。
+      const P = new Array(n); const Q = new Array(n);
+      for(let i=0;i<n;i++){ P[i]=[tmplCA[i].x,tmplCA[i].y,tmplCA[i].z]; Q[i]=[mobCA[i].x,mobCA[i].y,mobCA[i].z]; }
+
+      const Pc = mean(P), Qc = mean(Q);
+      const X = subAll(P, Pc), Y = subAll(Q, Qc);
+      const H = mul(tr(X), Y);                 // 3x3
+      const {U,S,V} = svdFromHtH(H);           // ちゃんと U = H V S^{-1} を求める
+      let R = mul(U, tr(V));                   // ★ mobile -> template
+      if(det3(R) < 0){                         // 反転対策
+        V[0][2]*=-1; V[1][2]*=-1; V[2][2]*=-1;
+        R = mul(U, tr(V));
+      }
+      const t = subV(Pc, mv(R, Qc));           // t = Pc - R*Qc
+
+      // CA RMSD（評価用）
+      const QtoP = addAll(mulAll(Q, R), t);    // R*Q + t
+      const r = rms(QtoP, P);
+
+      // 全原子に適用：m' = R*m + t
+      // mobAll は元の行インデックスを持っているので、その行の座標欄だけ上書きする
+      const lines = mobAll.length ? mobAll[0].line.split(/\r?\n/) : []; // 使わない（安全用）
+      const out = [];
+      for(const a of mobAll){
+        const m = [a.x, a.y, a.z];
+        const m2 = addV(mv(R, m), t);          // 変換後座標
+        const nx = m2[0].toFixed(3).toString().padStart(8,' ');
+        const ny = m2[1].toFixed(3).toString().padStart(8,' ');
+        const nz = m2[2].toFixed(3).toString().padStart(8,' ');
+        let line = a.line;
+        // 30–54 桁のみ差し替え。他は完全維持
+        line = line.substring(0,30) + nx + ny + nz + line.substring(54);
+        out.push(line);
+      }
+      out.push("END");
+      return { rmsd: r, transformedText: out.join("\n"), count: n };
+    }
+
+    /* ===== Linear algebra ===== */
+    function mean(P){ const n=P.length; return [0,1,2].map(j=>P.reduce((s,p)=>s+p[j],0)/n); }
+    function subV(a,b){ return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
+    function addV(a,b){ return [a[0]+b[0], a[1]+b[1], a[2]+b[2]]; }
+    function mv(A,v){ return [A[0][0]*v[0]+A[0][1]*v[1]+A[0][2]*v[2], A[1][0]*v[0]+A[1][1]*v[1]+A[1][2]*v[2], A[2][0]*v[0]+A[2][1]*v[1]+A[2][2]*v[2]]; }
+    function subAll(P,c){ return P.map(p=>[p[0]-c[0], p[1]-c[1], p[2]-c[2]]); }
+    function addAll(P,c){ return P.map(p=>[p[0]+c[0], p[1]+c[1], p[2]+c[2]]); }
+    function tr(A){ return A[0].map((_,i)=>A.map(r=>r[i])); }
+    function mul(A,B){ const r=A.length,c=B[0].length,k=B.length; const o=Array.from({length:r},()=>Array(c).fill(0));
+      for(let i=0;i<r;i++) for(let j=0;j<c;j++) for(let t=0;t<k;t++) o[i][j]+=A[i][t]*B[t][j]; return o; }
+    function mulAll(P,R){ return P.map(v=>[R[0][0]*v[0]+R[0][1]*v[1]+R[0][2]*v[2], R[1][0]*v[0]+R[1][1]*v[1]+R[1][2]*v[2], R[2][0]*v[0]+R[2][1]*v[1]+R[2][2]*v[2]]); }
+    function det3(M){ return M[0][0]*(M[1][1]*M[2][2]-M[1][2]*M[2][1]) - M[0][1]*(M[1][0]*M[2][2]-M[1][2]*M[2][0]) + M[0][2]*(M[1][0]*M[2][1]-M[1][1]*M[2][0]); }
+    function rms(A,B){ let s=0; for(let i=0;i<A.length;i++){ const dx=A[i][0]-B[i][0], dy=A[i][1]-B[i][1], dz=A[i][2]-B[i][2]; s+=dx*dx+dy*dy+dz*dz; } return Math.sqrt(s/A.length); }
+
+    // SVD from H^T H: get V,S by Jacobi eigen-decomp of H^T H, then U = H * V * S^{-1}
+    function svdFromHtH(H){
+      function T(A){ return A[0].map((_,i)=>A.map(r=>r[i])); }
+      function mul(A,B){ const r=A.length,c=B[0].length,k=B.length; const o=Array.from({length:r},()=>Array(c).fill(0));
+        for(let i=0;i<r;i++) for(let j=0;j<c;j++) for(let t=0;t<k;t++) o[i][j]+=A[i][t]*B[t][j]; return o; }
+      function I(n){ return Array.from({length:n},(_,i)=>Array.from({length:n},(_,j)=>i===j?1:0)); }
+
+      const AtA = mul(T(H), H);         // 3x3 対称
+      let V = I(3);
+      let Sdiag = [0,0,0];
+      // Jacobi 反復で AtA を対角化 → V が固有ベクトル、固有値=σ^2
+      let A = AtA.map(r=>r.slice());
+      for(let iter=0; iter<50; iter++){
+        let changed=false;
+        for(let p=0;p<3;p++) for(let q=p+1;q<3;q++){
+          const apq=A[p][q]; if(Math.abs(apq)<1e-12) continue;
+          const phi=0.5*Math.atan2(2*apq, A[q][q]-A[p][p]);
+          const c=Math.cos(phi), s=Math.sin(phi);
+          for(let k=0;k<3;k++){ const apk=A[p][k], aqk=A[q][k]; A[p][k]=c*apk-s*aqk; A[q][k]=s*apk+c*aqk; }
+          for(let k=0;k<3;k++){ const akp=A[k][p], akq=A[k][q]; A[k][p]=c*akp-s*akq; A[k][q]=s*akp+c*akq; }
+          for(let k=0;k<3;k++){ const vkp=V[k][p], vkq=V[k][q]; V[k][p]=c*vkp-s*vkq; V[k][q]=s*vkp+c*vkq; }
+          changed=true;
+        }
+        if(!changed) break;
+      }
+      Sdiag = [Math.sqrt(Math.max(A[0][0],0)), Math.sqrt(Math.max(A[1][1],0)), Math.sqrt(Math.max(A[2][2],0))];
+
+      // U = H * V * S^{-1}
+      const VinvS = [[V[0][0]/(Sdiag[0]||1e-12), V[0][1]/(Sdiag[1]||1e-12), V[0][2]/(Sdiag[2]||1e-12)],
+                     [V[1][0]/(Sdiag[0]||1e-12), V[1][1]/(Sdiag[1]||1e-12), V[1][2]/(Sdiag[2]||1e-12)],
+                     [V[2][0]/(Sdiag[0]||1e-12), V[2][1]/(Sdiag[1]||1e-12), V[2][2]/(Sdiag[2]||1e-12)]];
+      const U = mul(H, VinvS);
+      return {U, S:Sdiag, V};
+    }
+
+    /* ===== Demo ===== */
+    function runDemo(){
+      const pdbT = [
+        'ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00 20.00           N',
+        'ATOM      2  CA  ALA A   1       1.458   0.000   0.000  1.00 20.00           C',
+        'ATOM      3  C   ALA A   1       2.000   1.300   0.000  1.00 20.00           C',
+        'ATOM      4  O   ALA A   1       1.500   2.300   0.000  1.00 20.00           O',
+        'END'
+      ].join('\n');
+      const pdbM = [
+        'ATOM      1  N   ALA A   1       3.000   0.500   0.200  1.00 20.00           N',
+        'ATOM      2  CA  ALA A   1       4.458   0.500   0.200  1.00 20.00           C',
+        'ATOM      3  C   ALA A   1       5.000   1.800   0.200  1.00 20.00           C',
+        'ATOM      4  O   ALA A   1       4.500   2.800   0.200  1.00 20.00           O',
+        'END'
+      ].join('\n');
+
+      renderPDB(stageT, pdbT, "#1f77b4");
+
+      const T_all = parseAllAtoms(pdbT), M_all = parseAllAtoms(pdbM);
+      const T_CA  = extractCA(T_all),      M_CA  = extractCA(M_all);
+
+      const {rmsd, transformedText, count} = alignByCA_TransformAll(T_CA, M_CA, M_all);
+
+      STORE.clear(); ID_SEQ=0;
+      const id = "k"+(++ID_SEQ);
+      STORE.set(id, {name:"demo_aligned.pdb", text: transformedText, rmsd, count});
+      document.getElementById("matched").textContent = count;
+      document.getElementById("rmsd").textContent = Number.isFinite(rmsd) ? rmsd.toFixed(3) : "—";
+
+      document.getElementById("resultsBody").innerHTML = `
+        <tr>
+          <td>demo_aligned.pdb</td>
+          <td>${Number.isFinite(rmsd) ? rmsd.toFixed(3) : "—"}</td>
+          <td style="display:flex; gap:8px;">
+            <button class="btn btn-dl"   data-id="${id}">DL</button>
+            <button class="btn btn-show" data-id="${id}">表示</button>
+          </td>
+        </tr>`;
+      updateBulkButton();
+      previewId(id);
+      setStatus("Demo loaded","good");
+    }
+  </script>
+</body>
+</html>
