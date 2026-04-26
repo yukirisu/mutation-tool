@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>成績証明書 科目抽出ツール</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ========================================================
+       ここにご自身のヘッダーを挿入してください
+       例: <header>...</header>
+       ======================================================== -->
+
+  <main>
+
+    <p class="page-desc">
+      成績証明書（JPEG・PNG・PDF）をアップロードすると、科目名・成績を自動抽出します
+    </p>
+
+    <!-- Upload zone -->
+    <div id="drop-zone" role="button" tabindex="0"
+         aria-label="ファイルをドロップ、またはクリックして選択">
+      <div class="drop-icon">📄</div>
+      <p class="drop-main">ここにファイルをドロップ</p>
+      <p class="drop-sub">または クリックして選択（JPEG・PNG・PDF）</p>
+    </div>
+    <input id="file-input" type="file"
+           accept="image/jpeg,image/png,application/pdf"
+           style="display:none" aria-hidden="true" />
+
+    <!-- Image preview -->
+    <div id="preview-wrap">
+      <img id="preview-img" alt="アップロードした画像のプレビュー" />
+    </div>
+
+    <!-- Display options -->
+    <div class="options-bar" role="group" aria-label="表示項目の選択">
+      <span class="options-label">表示項目：</span>
+      <label>
+        <input type="checkbox" id="opt-grades" checked />
+        成績
+      </label>
+      <label>
+        <input type="checkbox" id="opt-credits" checked />
+        単位数
+      </label>
+      <label>
+        <input type="checkbox" id="opt-semester" />
+        学期
+      </label>
+    </div>
+
+    <!-- Extract button -->
+    <button id="btn-extract" disabled>科目を抽出する</button>
+
+    <!-- Error -->
+    <div id="error-box" role="alert"></div>
+
+    <!-- Results -->
+    <div id="results">
+
+      <!-- Meta cards (学校名・氏名・年度) -->
+      <div id="meta-grid"></div>
+
+      <!-- Bulk copy -->
+      <div id="bulk-copy-bar" class="bulk-copy-bar"></div>
+
+      <!-- Subject table -->
+      <div id="subject-table-wrap">
+        <div id="tbl-head" class="tbl-head"></div>
+        <div id="tbl-body"></div>
+      </div>
+
+      <p id="subject-count"></p>
+
+    </div><!-- /results -->
+
+  </main>
+
+  <!-- ========================================================
+       ここにご自身のフッターを挿入してください
+       例: <footer>...</footer>
+       ======================================================== -->
+
+  <!-- Fallback copy modal -->
+  <div id="copy-modal-overlay" role="dialog" aria-modal="true"
+       aria-label="テキストを手動コピー">
+    <div id="copy-modal">
+      <p>全選択して <kbd>Ctrl+C</kbd> / <kbd>⌘C</kbd> でコピーしてください</p>
+      <textarea id="modal-textarea" readonly></textarea>
+      <button id="btn-modal-close" class="btn-modal-close">閉じる</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
