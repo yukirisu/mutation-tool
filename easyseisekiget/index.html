@@ -3,36 +3,27 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>成績証明書 科目抽出ツール</title>
-  <link rel="stylesheet" href="style.css" />
-</head>
-<body>
-
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Mutation Tool Suite は、構造アラインメントや変異生成を支援する研究用Webツール群です。構造情報に基づいた合理的なタンパク質設計をサポートします。">
-  <meta name="keywords" content="Mutation Tool, 構造アラインメント, タンパク質変異, Bioinformatics, AI設計, Yukirisu, 雪リス, ユキリス, ゆきりす">
+  <meta name="description" content="成績証明書（JPEG・PNG・PDF）から科目名・成績・単位数を自動抽出してコピーできるツールです。Yukirisu Mutation Tool Suite の一部です。">
+  <meta name="keywords" content="成績証明書, 科目抽出, 成績コピー, Mutation Tool, Bioinformatics, Yukirisu, 雪リス, ユキリス, ゆきりす">
   <meta name="author" content="Yukirisu; 雪リス; ユキリス; ゆきりす">
   <meta name="robots" content="index,follow">
-  <link rel="canonical" href="https://yukirisu.github.io/">
-  <title>Yukirisu Mutation Tool Site</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <link rel="canonical" href="https://yukirisu.github.io/mutation-tool/easyseisekiget/index.html">
+  <title>成績証明書 科目抽出ツール | Yukirisu Mutation Tool Site</title>
 
   <!-- Open Graph / Twitter -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Yukirisu Mutation Tool Site">
-  <meta property="og:description" content="構造アラインメントや変異生成を支援する研究用Webツール群。構造情報に基づいた合理的なタンパク質設計をサポートします。">
-  <meta property="og:url" content="https://yukirisu.github.io/">
+  <meta property="og:title" content="成績証明書 科目抽出ツール | Yukirisu Mutation Tool Site">
+  <meta property="og:description" content="成績証明書（JPEG・PNG・PDF）から科目名・成績・単位数を自動抽出してコピーできるツール。">
+  <meta property="og:url" content="https://yukirisu.github.io/mutation-tool/easyseisekiget/index.html">
   <meta property="og:site_name" content="Yukirisu Mutation Tool Site">
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Yukirisu Mutation Tool Site">
-  <meta name="twitter:description" content="構造アラインメントや変異生成を支援する研究用Webツール群。">
+  <meta name="twitter:title" content="成績証明書 科目抽出ツール | Yukirisu Mutation Tool Site">
+  <meta name="twitter:description" content="成績証明書から科目名・成績を自動抽出してコピーできるツール。">
 
-  <!-- AdSense Auto ads（発行者ID: ca-pub-9022390205190129）※headに1回だけ -->
+  <!-- AdSense（発行者ID: ca-pub-9022390205190129） -->
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9022390205190129" crossorigin="anonymous"></script>
 
-  <!-- JSON-LD 構造化データ：検索エンジン用（画面には非表示） -->
+  <!-- JSON-LD 構造化データ -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -47,15 +38,11 @@
       },
       {
         "@type": "WebPage",
-        "@id": "https://yukirisu.github.io/#webpage",
-        "url": "https://yukirisu.github.io/",
-        "name": "Yukirisu Mutation Tool Site",
+        "@id": "https://yukirisu.github.io/mutation-tool/easyseisekiget/index.html#webpage",
+        "url": "https://yukirisu.github.io/mutation-tool/easyseisekiget/index.html",
+        "name": "成績証明書 科目抽出ツール",
         "isPartOf": { "@id": "https://yukirisu.github.io/#website" },
-        "inLanguage": "ja",
-        "about": {
-          "@type": "Thing",
-          "name": "Mutation Tool Suite"
-        }
+        "inLanguage": "ja"
       },
       {
         "@type": "Organization",
@@ -71,89 +58,148 @@
     ]
   }
   </script>
+
+  <!-- Tailwind CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <!-- ページ固有スタイル（Tailwindの後に読み込んで上書き） -->
+  <link rel="stylesheet" href="style.css" />
 </head>
+<body class="bg-gray-50 text-gray-900" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Hiragino Sans','Noto Sans JP',sans-serif;">
 
-  <main>
+  <!-- ===== ヘッダー（Tailwindクラスで実装） ===== -->
+  <header style="background:#1a1a2e; border-bottom:2px solid #378ADD;">
+    <div class="max-w-5xl mx-auto px-5 flex items-center justify-between" style="height:52px;">
+      <a href="https://yukirisu.github.io/"
+         class="text-white font-semibold text-sm tracking-wide no-underline hover:text-blue-300 whitespace-nowrap">
+        Yukirisu Mutation Tool Site
+      </a>
+      <nav class="flex items-center gap-5">
+        <a href="https://yukirisu.github.io/"
+           class="text-sm no-underline hover:text-white whitespace-nowrap"
+           style="color:#c0d8f0;">
+          ホーム
+        </a>
+        <a href="https://yukirisu.github.io/mutation-tool/easyseisekiget/index.html"
+           class="text-sm text-white font-medium no-underline whitespace-nowrap"
+           style="border-bottom:2px solid #378ADD; padding-bottom:2px;"
+           aria-current="page">
+          成績証明書 科目抽出
+        </a>
+      </nav>
+    </div>
+  </header>
 
-    <p class="page-desc">
+  <!-- ===== メインコンテンツ ===== -->
+  <main class="max-w-3xl mx-auto px-5 py-8 pb-16">
+
+    <p class="text-sm text-gray-500 mb-5">
       成績証明書（JPEG・PNG・PDF）をアップロードすると、科目名・成績を自動抽出します
     </p>
 
+    <!-- APIキー未設定の警告（config.jsが正しく設定されると非表示） -->
+    <div id="api-key-warning" class="hidden mb-4 p-3 rounded-lg text-sm"
+         style="background:#fff8e1; border:1px solid #f9a825; color:#5d4037;">
+      ⚠️ <code>config.js</code> にAPIキーが設定されていません。
+      <a href="https://console.anthropic.com/" target="_blank" rel="noopener" class="underline">Anthropic Console</a>
+      でキーを取得し、<code>config.js</code> の <code>ANTHROPIC_API_KEY</code> に貼り付けてください。
+    </div>
+
     <!-- Upload zone -->
     <div id="drop-zone" role="button" tabindex="0"
-         aria-label="ファイルをドロップ、またはクリックして選択">
-      <div class="drop-icon">📄</div>
-      <p class="drop-main">ここにファイルをドロップ</p>
-      <p class="drop-sub">または クリックして選択（JPEG・PNG・PDF）</p>
+         aria-label="ファイルをドロップ、またはクリックして選択"
+         class="upload-zone">
+      <div class="text-3xl mb-2 leading-none">📄</div>
+      <p class="drop-main font-medium text-sm">ここにファイルをドロップ</p>
+      <p class="drop-sub text-xs text-gray-400 mt-1">または クリックして選択（JPEG・PNG・PDF）</p>
     </div>
     <input id="file-input" type="file"
            accept="image/jpeg,image/png,application/pdf"
-           style="display:none" aria-hidden="true" />
+           class="hidden" aria-hidden="true" />
 
     <!-- Image preview -->
-    <div id="preview-wrap">
-      <img id="preview-img" alt="アップロードした画像のプレビュー" />
+    <div id="preview-wrap" class="hidden mb-4 rounded-lg overflow-hidden border border-gray-200" style="max-height:200px;">
+      <img id="preview-img" alt="プレビュー" class="w-full object-contain" style="max-height:200px;" />
     </div>
 
     <!-- Display options -->
-    <div class="options-bar" role="group" aria-label="表示項目の選択">
-      <span class="options-label">表示項目：</span>
-      <label>
-        <input type="checkbox" id="opt-grades" checked />
+    <div class="options-bar flex flex-wrap items-center gap-4 mb-4 px-4 py-3 rounded-lg text-sm text-gray-600"
+         role="group" aria-label="表示項目の選択"
+         style="background:#fafaf8; border:1px solid #e8e8e6;">
+      <span class="font-medium">表示項目：</span>
+      <label class="flex items-center gap-1.5 cursor-pointer">
+        <input type="checkbox" id="opt-grades" checked class="cursor-pointer" style="accent-color:#378ADD;width:15px;height:15px;" />
         成績
       </label>
-      <label>
-        <input type="checkbox" id="opt-credits" checked />
+      <label class="flex items-center gap-1.5 cursor-pointer">
+        <input type="checkbox" id="opt-credits" checked class="cursor-pointer" style="accent-color:#378ADD;width:15px;height:15px;" />
         単位数
       </label>
-      <label>
-        <input type="checkbox" id="opt-semester" />
+      <label class="flex items-center gap-1.5 cursor-pointer">
+        <input type="checkbox" id="opt-semester" class="cursor-pointer" style="accent-color:#378ADD;width:15px;height:15px;" />
         学期
       </label>
     </div>
 
     <!-- Extract button -->
-    <button id="btn-extract" disabled>科目を抽出する</button>
+    <button id="btn-extract" disabled
+            class="extract-btn w-full py-3 text-base font-medium rounded-lg mb-6 transition-colors">
+      科目を抽出する
+    </button>
 
     <!-- Error -->
-    <div id="error-box" role="alert"></div>
+    <div id="error-box" class="hidden mb-4 p-3 rounded-lg text-sm"
+         style="background:#fff0f0; color:#a32d2d; border:1px solid #f5b8b8;"
+         role="alert"></div>
 
     <!-- Results -->
-    <div id="results">
+    <div id="results" class="hidden">
 
-      <!-- Meta cards (学校名・氏名・年度) -->
-      <div id="meta-grid"></div>
+      <!-- Meta cards -->
+      <div id="meta-grid" class="grid gap-2 mb-5" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));"></div>
 
       <!-- Bulk copy -->
-      <div id="bulk-copy-bar" class="bulk-copy-bar"></div>
+      <div id="bulk-copy-bar" class="flex flex-wrap gap-2 mb-4"></div>
 
       <!-- Subject table -->
-      <div id="subject-table-wrap">
+      <div id="subject-table-wrap" class="rounded-xl overflow-hidden" style="border:1px solid #e0e0de;">
         <div id="tbl-head" class="tbl-head"></div>
         <div id="tbl-body"></div>
       </div>
 
-      <p id="subject-count"></p>
+      <p id="subject-count" class="mt-2 text-xs text-gray-400"></p>
 
-    </div><!-- /results -->
+    </div>
 
   </main>
 
-  <!-- ========================================================
-       ここにご自身のフッターを挿入してください
-       例: <footer>...</footer>
-       ======================================================== -->
+  <!-- ===== フッター ===== -->
+  <footer style="background:#1a1a2e; border-top:1px solid #2a2a4e; margin-top:3rem;">
+    <div class="max-w-5xl mx-auto px-5 py-4 text-center text-xs" style="color:#8899aa;">
+      &copy; Yukirisu &nbsp;|&nbsp;
+      <a href="https://note.com/yukirisulove_" target="_blank" rel="noopener" style="color:#7ec8f5;" class="hover:underline">Note</a>
+      &nbsp;|&nbsp;
+      <a href="https://x.com/da5zp9esguiolrr?s=11" target="_blank" rel="noopener" style="color:#7ec8f5;" class="hover:underline">X (Twitter)</a>
+    </div>
+  </footer>
 
   <!-- Fallback copy modal -->
-  <div id="copy-modal-overlay" role="dialog" aria-modal="true"
-       aria-label="テキストを手動コピー">
-    <div id="copy-modal">
-      <p>全選択して <kbd>Ctrl+C</kbd> / <kbd>⌘C</kbd> でコピーしてください</p>
-      <textarea id="modal-textarea" readonly></textarea>
-      <button id="btn-modal-close" class="btn-modal-close">閉じる</button>
+  <div id="copy-modal-overlay" role="dialog" aria-modal="true" aria-label="テキストを手動コピー"
+       class="fixed inset-0 hidden items-center justify-center" style="background:rgba(0,0,0,0.45);z-index:9999;">
+    <div class="bg-white rounded-xl p-5" style="width:min(480px,90vw);border:1px solid #ddd;">
+      <p class="text-sm text-gray-500 mb-2">全選択して <kbd>Ctrl+C</kbd> / <kbd>⌘C</kbd> でコピーしてください</p>
+      <textarea id="modal-textarea" readonly
+                class="w-full p-2 text-sm rounded-lg resize-y"
+                style="min-height:120px;border:1px solid #ccc;background:#fafaf8;font-family:inherit;"></textarea>
+      <button id="btn-modal-close"
+              class="mt-3 px-4 py-1 text-sm rounded-lg cursor-pointer"
+              style="border:1px solid #ccc;background:#f5f5f3;color:#555;font-family:inherit;">
+        閉じる
+      </button>
     </div>
   </div>
 
+  <!-- APIキー設定（.gitignore に config.js を追加してください） -->
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
