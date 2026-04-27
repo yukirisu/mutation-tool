@@ -1,15 +1,23 @@
 /* =============================================
    transcript-extractor / app.js
+   AI バックエンド: Google Gemini API（無料枠）
    ============================================= */
 "use strict";
 
 // ---- Prompt ----
-const SYSTEM_PROMPT =
-  "You are an AI that extracts data from academic transcripts.\n" +
-  "Extract: subject/course names, grades (keep EXACTLY as written: A+, 優, 87, 3.7, Pass, 合格, HD, etc.), " +
-  "credits (number only, no unit word), semester, student name, institution.\n" +
-  "Respond ONLY with valid JSON, no markdown fences, no extra text:\n" +
+const PROMPT =
+  "あなたは成績証明書を解析するAIです。\n" +
+  "画像またはPDFから以下を抽出してください:\n" +
+  "- 科目名 / 成績（記載通りの表記: A+, 優, 87, 3.7, Pass, 合格, HD など変換しない）\n" +
+  "- 単位数（数字のみ、「単位」という文字は含めない）\n" +
+  "- 学期・学年度 / 学生氏名 / 学校名\n" +
+  "必ず以下のJSON形式のみで返答してください。前後のテキストやコードフェンスは不要です:\n" +
   '{"institution":null,"student_name":null,"academic_year":null,"subjects":[{"name":"","grade":"","credits":null,"semester":null}]}';
+
+// ---- Gemini モデル ----
+// gemini-2.0-flash は無料枠で画像・PDF対応
+const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 // ---- State ----
 let currentFile   = null;
@@ -37,14 +45,13 @@ const btnModalClose = document.getElementById("btn-modal-close");
 const apiKeyWarning = document.getElementById("api-key-warning");
 
 // ---- APIキー確認 ----
-// config.js が読み込まれ ANTHROPIC_API_KEY が設定されているか確認
 function getApiKey() {
-  if (typeof ANTHROPIC_API_KEY === "undefined" ||
-      !ANTHROPIC_API_KEY ||
-      ANTHROPIC_API_KEY.startsWith("sk-ant-ここに")) {
+  if (typeof GEMINI_API_KEY === "undefined" ||
+      !GEMINI_API_KEY ||
+      GEMINI_API_KEY.includes("ここに")) {
     return null;
   }
-  return ANTHROPIC_API_KEY;
+  return GEMINI_API_KEY;
 }
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -56,8 +63,8 @@ window.addEventListener("DOMContentLoaded", () => {
 
 // ---- Upload ----
 dropZone.addEventListener("click",     () => fileInput.click());
-dropZone.addEventListener("keydown",   e => { if (e.key === "Enter" || e.key === " ") fileInput.click(); });
-dropZone.addEventListener("dragover",  e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+dropZone.addEventListener("keydown",   e  => { if (e.key === "Enter" || e.key === " ") fileInput.click(); });
+dropZone.addEventListener("dragover",  e  => { e.preventDefault(); dropZone.classList.add("drag-over"); });
 dropZone.addEventListener("dragleave", ()  => dropZone.classList.remove("drag-over"));
 dropZone.addEventListener("drop", e => {
   e.preventDefault();
@@ -109,34 +116,44 @@ async function extractData() {
     return;
   }
 
-  btnExtract.disabled     = true;
-  btnExtract.textContent  = "解析中…";
+  btnExtract.disabled    = true;
+  btnExtract.textContent = "解析中…";
   hideError();
   resultsEl.classList.add("hidden");
   resultsEl.style.display = "none";
 
   try {
-    const base64  = await fileToBase64(currentFile);
-    const isImage = currentFile.type.startsWith("image/");
+    const base64    = await fileToBase64(currentFile);
+    const mimeType  = currentFile.type;   // image/jpeg, image/png, application/pdf
 
-    const contentBlock = isImage
-      ? { type: "image",    source: { type: "base64", media_type: currentFile.type,  data: base64 } }
-      : { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } };
-
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type":            "application/json",
-        "x-api-key":               apiKey,
-        "anthropic-version":       "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
+    // Gemini API リクエストボディ
+    // inlineData でファイルを直接送信（画像・PDF対応）
+    const body = {
+      contents: [
+        {
+          parts: [
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data:     base64,
+              },
+            },
+            {
+              text: PROMPT,
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature:     0,      // 決定論的な出力でJSON安定性を上げる
+        maxOutputTokens: 2048,
       },
-      body: JSON.stringify({
-        model:      "claude-sonnet-4-20250514",
-        max_tokens: 2000,
-        system:     SYSTEM_PROMPT,
-        messages:   [{ role: "user", content: [contentBlock, { type: "text", text: "Extract all subjects and grades." }] }],
-      }),
+    };
+
+    const res = await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(body),
     });
 
     if (!res.ok) {
@@ -145,9 +162,13 @@ async function extractData() {
       throw new Error(msg);
     }
 
-    const data  = await res.json();
-    const raw   = (data.content || []).map(b => b.text || "").join("");
+    const data = await res.json();
+
+    // Gemini のレスポンス構造: candidates[0].content.parts[0].text
+    const raw   = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
     const clean = raw.replace(/^```[a-z]*\n?|\n?```$/g, "").trim();
+
+    if (!clean) throw new Error("モデルからの応答が空でした");
 
     currentResult = JSON.parse(clean);
     renderResults(currentResult);
@@ -263,7 +284,6 @@ function renderResults(data) {
   });
 
   subjectCount.textContent = `${data.subjects.length} 科目を抽出しました`;
-
   resultsEl.classList.remove("hidden");
   resultsEl.style.display = "block";
 }
@@ -351,9 +371,7 @@ function openModal(text) {
   modalOverlay.style.display = "flex";
   setTimeout(() => { modalTextarea.focus(); modalTextarea.select(); }, 50);
 }
-modalOverlay.addEventListener("click", e => {
-  if (e.target === modalOverlay) closeModal();
-});
+modalOverlay.addEventListener("click", e => { if (e.target === modalOverlay) closeModal(); });
 btnModalClose.addEventListener("click", closeModal);
 function closeModal() {
   modalOverlay.classList.remove("open");
@@ -371,8 +389,8 @@ function fileToBase64(file) {
 }
 
 function showError(msg) {
-  errorBox.textContent    = msg;
-  errorBox.style.display  = "block";
+  errorBox.textContent   = msg;
+  errorBox.style.display = "block";
   errorBox.classList.remove("hidden");
 }
 function hideError() {
