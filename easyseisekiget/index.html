@@ -1,31 +1,29 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Mutation Tool Suite は、構造アラインメントや変異生成を支援する研究用Webツール群です。構造情報に基づいた合理的なタンパク質設計をサポートします。">
-  <meta name="keywords" content="Mutation Tool, 構造アラインメント, タンパク質変異, Bioinformatics, AI設計, Yukirisu, 雪リス, ユキリス, ゆきりす">
+  <meta name="description" content="成績証明書（JPEG・PNG・PDF）から科目名・成績・単位数を自動抽出してコピーできるツールです。Yukirisu Mutation Tool Suite の一部です。">
+  <meta name="keywords" content="成績証明書, 科目抽出, 成績コピー, Mutation Tool, Bioinformatics, Yukirisu, 雪リス, ユキリス, ゆきりす">
   <meta name="author" content="Yukirisu; 雪リス; ユキリス; ゆきりす">
   <meta name="robots" content="index,follow">
-  <link rel="canonical" href="https://yukirisu.github.io/">
-  <title>Yukirisu Mutation Tool Site</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <link rel="canonical" href="https://yukirisu.github.io/mutation-tool/easyseisekiget/index.html">
+  <title>成績証明書 科目抽出ツール | Yukirisu Mutation Tool Site</title>
 
   <!-- Open Graph / Twitter -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Yukirisu Mutation Tool Site">
-  <meta property="og:description" content="構造アラインメントや変異生成を支援する研究用Webツール群。構造情報に基づいた合理的なタンパク質設計をサポートします。">
-  <meta property="og:url" content="https://yukirisu.github.io/">
+  <meta property="og:title" content="成績証明書 科目抽出ツール | Yukirisu Mutation Tool Site">
+  <meta property="og:description" content="成績証明書（JPEG・PNG・PDF）から科目名・成績・単位数を自動抽出してコピーできるツール。">
+  <meta property="og:url" content="https://yukirisu.github.io/mutation-tool/easyseisekiget/index.html">
   <meta property="og:site_name" content="Yukirisu Mutation Tool Site">
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Yukirisu Mutation Tool Site">
-  <meta name="twitter:description" content="構造アラインメントや変異生成を支援する研究用Webツール群。">
+  <meta name="twitter:title" content="成績証明書 科目抽出ツール | Yukirisu Mutation Tool Site">
+  <meta name="twitter:description" content="成績証明書から科目名・成績を自動抽出してコピーできるツール。">
 
-  <!-- AdSense Auto ads（発行者ID: ca-pub-9022390205190129）※headに1回だけ -->
+  <!-- AdSense（発行者ID: ca-pub-9022390205190129） -->
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9022390205190129" crossorigin="anonymous"></script>
 
-  <!-- JSON-LD 構造化データ：検索エンジン用（画面には非表示） -->
+  <!-- JSON-LD 構造化データ -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -40,15 +38,11 @@
       },
       {
         "@type": "WebPage",
-        "@id": "https://yukirisu.github.io/#webpage",
-        "url": "https://yukirisu.github.io/",
-        "name": "Yukirisu Mutation Tool Site",
+        "@id": "https://yukirisu.github.io/mutation-tool/easyseisekiget/index.html#webpage",
+        "url": "https://yukirisu.github.io/mutation-tool/easyseisekiget/index.html",
+        "name": "成績証明書 科目抽出ツール",
         "isPartOf": { "@id": "https://yukirisu.github.io/#website" },
-        "inLanguage": "ja",
-        "about": {
-          "@type": "Thing",
-          "name": "Mutation Tool Suite"
-        }
+        "inLanguage": "ja"
       },
       {
         "@type": "Organization",
@@ -65,14 +59,11 @@
   }
   </script>
 
-
   <!-- Tailwind CSS -->
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
   <!-- ページ固有スタイル（Tailwindの後に読み込んで上書き） -->
   <link rel="stylesheet" href="style.css" />
 </head>
-
-  
 <body class="bg-gray-50 text-gray-900" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Hiragino Sans','Noto Sans JP',sans-serif;">
 
   <!-- ===== ヘッダー（Tailwindクラスで実装） ===== -->
@@ -109,8 +100,8 @@
     <div id="api-key-warning" class="hidden mb-4 p-3 rounded-lg text-sm"
          style="background:#fff8e1; border:1px solid #f9a825; color:#5d4037;">
       ⚠️ <code>config.js</code> にAPIキーが設定されていません。
-      <a href="https://console.anthropic.com/" target="_blank" rel="noopener" class="underline">Anthropic Console</a>
-      でキーを取得し、<code>config.js</code> の <code>ANTHROPIC_API_KEY</code> に貼り付けてください。
+      <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="underline">Google AI Studio</a>
+      で無料のキーを取得し、<code>config.js</code> の <code>GEMINI_API_KEY</code> に貼り付けてください。
     </div>
 
     <!-- Upload zone -->
