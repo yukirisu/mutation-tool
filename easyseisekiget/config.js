@@ -6,4 +6,4 @@
 //    個人利用・限定公開サイトでのみ使用してください。
 // =============================================
 
-const ANTHROPIC_API_KEY = "sk-ant-AIzaSyAPECH2E2w85w6Y08U-R-V7hgsgIgJessQ";
+const ANTHROPIC_API_KEY = "AIzaSyAPECH2E2w85w6Y08U-R-V7hgsgIgJessQ";
